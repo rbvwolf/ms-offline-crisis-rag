@@ -2,6 +2,6 @@ streamlit==1.36.0
 langchain==0.2.6
 langchain-community==0.2.6
 pypdf==4.2.0
-sqlite-vec==0.1.0-alpha.16  # SQLite üzerinde vektör araması için
+sqlite-vec==0.1.0-alpha.16
 sentence-transformers==3.0.1
 pandas==2.2.2
