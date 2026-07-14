@@ -1,33 +1,59 @@
 import os
-import shutil
 import sqlite3
 import sqlite_vec
 from langchain_community.document_loaders import PyPDFDirectoryLoader
+from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 
 raw_pdf_dir = "data/raw_pdfs"
 db_path = "db/survival_knowledge.db"
-processed_pdf_dir = "data/processed"
 
 def ingest_pdfs_to_sqlite():
-    print("(*) PDF files are scanning...")
+    print("(*) Connecting to DB and checking processed files")
+    db = sqlite3.connect(db_path)
     
-    # Loading documents
-    loader = PyPDFDirectoryLoader(raw_pdf_dir)
-    documents = loader.load()
+    # Creating new table to track processed files
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS processed_files (
+            filename TEXT PRIMARY KEY,
+            processed_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    db.commit()
     
-    if not documents:
-        print("(!!!) Theres no PDF files in folder. Please add AFAD/Kızılay guides to the data/raw_pdfs folder.")
+    # Fetch already processed files from DB
+    cursor = db.cursor()
+    cursor.execute("SELECT filename FROM processed_files")
+    processed_set = set(row[0] for row in cursor.fetchall())
+    
+    new_documents = []
+    new_filenames = []
+    
+    print("(*) Scanning raw_pdfs folder")
+    for filename in os.listdir(raw_pdf_dir):
+        if filename.endswith(".pdf"):
+            if filename in processed_set:
+                print(f"[-] Skipping (Already processed): {filename}")
+            else:
+                print(f"[+] Found new file. Reading: {filename}")
+                file_path = os.path.join(raw_pdf_dir, filename)
+                loader = PyPDFLoader(file_path)
+                new_documents.extend(loader.load())
+                new_filenames.append(filename)
+                
+    if not new_documents:
+        print("(!!!) No new PDF files found. Database is up to date.")
+        db.close()
         return
     
-    print(f"(*) Found {len(documents)} pages of document. Chunking...")
+    print(f"(*) Found {len(new_documents)} pages of document. Chunking...")
     
     # Chunking texts in documents
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size = 1000, chunk_overlap=150 #Make overlap for taking care of sense of context
     )
-    chunks = text_splitter.split_documents(documents)
+    chunks = text_splitter.split_documents(new_documents)
     print(f"(*) Documents splitted into {len(chunks)} meaningful pieces.")
     
     # Loading offline embedding model
@@ -40,7 +66,6 @@ def ingest_pdfs_to_sqlite():
     # Save to SQL Vector DB without langchain
     print("(*) Calculating Vectors and save to the SQLite database with sqlite-vec.")
     # db connection and loading vec file extension
-    db = sqlite3.connect(db_path)
     db.enable_load_extension(True)
     sqlite_vec.load(db)
     db.enable_load_extension(False)
@@ -55,23 +80,18 @@ def ingest_pdfs_to_sqlite():
     """)
     
     cursor = db.cursor()
-    for i, (text, vector) in enumerate(zip(texts, vectors)):
+    for text, vector in zip(texts, vectors):
         cursor.execute(
-            "INSERT INTO survival_vectors(chunk_id, text, embedding) VALUES (?, ?, ?)",
-            (i, text, sqlite_vec.serialize_float32(vector))
+            "INSERT INTO survival_vectors(text, embedding) VALUES (?, ?)",
+            (text, sqlite_vec.serialize_float32(vector))
         )
+        
+    for filename in new_filenames:
+        cursor.execute("INSERT INTO processed_files (filename) VALUES (?)", (filename,))
+    
     db.commit()
     db.close()
     print(f"(*) Successful. Vector database saved and updated to: {db_path}")
-    
-    # Move processed pdfs to data/processed
-    print(f"(*) Processed PDFs moving to archive ({processed_pdf_dir})")
-    for filename in os.listdir(raw_pdf_dir):
-        if filename.endswith(".pdf"):
-            source_path = os.path.join(raw_pdf_dir, filename)
-            dist_path = os.path.join(processed_pdf_dir, filename)
-            shutil.move(source_path, dist_path)
-            print(f"    -> Moved: {filename}")
     
 if __name__ == "__main__":
     ingest_pdfs_to_sqlite()
