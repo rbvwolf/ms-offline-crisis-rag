@@ -9,7 +9,41 @@ def setup_system():
     FoundryLocalManager.initialize(Configuration(app_name="OfflineCrisisRAG"))
     manager = FoundryLocalManager.instance
     
-    # 1. Dil modelini yükle
+    # Hardware Acceleration GPU Setup
+    print("(*) Analyzing system hardware for acceleration")
+    available_eps = manager.discover_eps()
+    
+    priority_eps = ['CUDAExecutionProvider', 'DirectMLExecutionProvider', 'WebGpuExecutionProvider']
+    
+    selected_ep = None
+    is_already_registered = False
+    
+    # Find the best available EP based on priority
+    for target in priority_eps:
+        for ep in available_eps:
+            if getattr(ep, 'name', '') == target:
+                selected_ep = target
+                # Check if its already downloaded
+                is_already_registered = getattr(ep, 'is_registered', False)
+                break
+        if selected_ep:
+            break
+    
+    if selected_ep:
+        print(f"(*) Compatible GPU provider found: {selected_ep}")
+        if is_already_registered:
+            print(f"[+] {selected_ep} is already registered. Skipping download.")
+        else:
+            print(f"(*) Downloading and registering {selected_ep}")
+            try:
+                manager.download_and_register_eps(names=[selected_ep])
+                print(f"[+] Successfully registered {selected_ep}! Offloading tasks to GPU")
+            except Exception as e:
+                print(f"[-] Failed to register GPU provider. Falling back to CPU. Error: {e}")
+    else:
+        print("(*) No dedicated GPU provider found. Defaulting to CPU/RAM processing")
+    #----------------------------------------------------------------------------
+    
     model_name = "phi-3.5-mini"
     print(f"(*) Loading offline model: {model_name}")
     model = manager.catalog.get_model(model_name)
@@ -19,7 +53,6 @@ def setup_system():
         model.download()
         model.load()
         
-    # 2. Gömme modelini yükle (SADECE BİR KERE ve ÇEVRİMDIŞI)
     print("(*) Loading embedding model ONCE (Strictly Offline)...")
     embeddings_model = HuggingFaceEmbeddings(
         model_name="all-MiniLM-L6-v2",
@@ -33,7 +66,7 @@ def answer_query(user_question, model, embeddings_model):
     
     # 1. Retrieve the top context paragraphs from SQLite
     print("(*) Searching local database for answers")
-    # Gömme modelini de fonksiyona gönderiyoruz ki baştan yüklemesin
+    
     retrieved_docs = retrieve_content(user_question, embeddings_model, k=3)
     
     # Combine retrieved chunks into a single context string (filtering out bad distances)
@@ -86,7 +119,6 @@ if __name__ == "__main__":
         while True:
             user_input = input("\n[Sen]: ")
             
-            # .lower() şeklinde parantez eklendi (HATA DÜZELTİLDİ)
             if user_input.lower() in ['kapat', 'q', 'cikis', 'exit']:
                 print("(*) Sistem güvenlice kapatılıyor")
                 break
@@ -94,7 +126,6 @@ if __name__ == "__main__":
             if not user_input.strip():
                 continue
             
-            # Parametre olarak embeddings_model de eklendi
             final_answer = answer_query(user_input, offline_model, embeddings_model)
             
             print("\n" + "="*50)
