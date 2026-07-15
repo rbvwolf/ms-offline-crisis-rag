@@ -4,12 +4,10 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 db_path = "db/survival_knowledge.db"
 
-def retrieve_content(query, k=3):
+def retrieve_content(query, embeddings_model, k=3):
     print(f"(*) Analyzing user query: {query}")
     
     # 1. Load the EXACT SAME embedding model used in ingestion
-    print("(*) Loading embedding model")
-    embeddings_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     
     # 2. Convert the text query into a mathematical vector
     query_vector = embeddings_model.embed_query(query)

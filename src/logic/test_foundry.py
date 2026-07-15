@@ -14,8 +14,16 @@ def run_hello_model():
     
     # Take model to memory
     model = manager.catalog.get_model(model_name)
-    model.download()
-    model.load()
+    
+    try:
+        print("(*) Model loading into memory")
+        model.load()
+        print("[+] Model is already downloaded, starting")
+    
+    except Exception:
+        print("(*) Model couldnt found in the device, downloading...")
+        model.download()
+        model.load()
     
     chat_client = model.get_chat_client()
     response = chat_client.complete_chat(
