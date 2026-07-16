@@ -4,6 +4,9 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 db_path = "db/survival_knowledge.db"
 
+# Must match the model used during ingestion in pdf_processor.py
+EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
+
 def retrieve_content(query, embeddings_model, k=3):
     print(f"(*) Analyzing user query: {query}")
     
