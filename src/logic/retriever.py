@@ -1,60 +1,84 @@
+import os
+import sys
 import sqlite3
 import sqlite_vec
 from langchain_huggingface import HuggingFaceEmbeddings
 
-db_path = "db/survival_knowledge.db"
+# Add src/ to path so we can import from core.config
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from core.config import EMBEDDING_MODEL, DB_PATH, MAX_DISTANCE
 
-# Must match the model used during ingestion in pdf_processor.py
-EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 
-def retrieve_content(query, embeddings_model, k=3):
+def retrieve_content(query, embeddings_model, k=5):
     print(f"(*) Analyzing user query: {query}")
-    
-    # 1. Load the EXACT SAME embedding model used in ingestion
-    
-    # 2. Convert the text query into a mathematical vector
+
     query_vector = embeddings_model.embed_query(query)
-    
-    # 3. Connect to DB and load vec extension
+
     print("(*) Connecting to vector database")
-    db = sqlite3.connect(db_path)
+    db = sqlite3.connect(DB_PATH)
     db.enable_load_extension(True)
     sqlite_vec.load(db)
     db.enable_load_extension(False)
-    
+
+    # Ensure chunks_metadata table exists (safe migration for DBs ingested before this change)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS chunks_metadata (
+            chunk_id INTEGER PRIMARY KEY,
+            source_file TEXT,
+            page_number INTEGER
+        )
+    """)
+
     cursor = db.cursor()
-    
-    # Serialize the query vector to float32 format for sqlite-vec
     serialized_query = sqlite_vec.serialize_float32(query_vector)
-    
-    # 4. Search the database using KNN
+
     print(f"(*) Searcing for the top {k} most relevant paragraphs")
     cursor.execute("""
-        SELECT text, distance
+        SELECT chunk_id, text, distance
         FROM survival_vectors
         WHERE embedding MATCH ? AND k = ?
         ORDER BY distance
     """, (serialized_query, k))
-    
-    results = cursor.fetchall()
+
+    raw_results = cursor.fetchall()
+
+    # Enrich each result with source metadata (gracefully handles missing metadata)
+    results = []
+    for chunk_id, text, distance in raw_results:
+        cursor.execute(
+            "SELECT source_file, page_number FROM chunks_metadata WHERE chunk_id = ?",
+            (chunk_id,)
+        )
+        meta = cursor.fetchone()
+        source_file = meta[0] if meta else None
+        page_number = meta[1] if meta else -1
+        results.append((text, distance, source_file, page_number))
+
     db.close()
-    
     return results
 
+
 if __name__ == "__main__":
-    # Test the retriever system
+    # Standalone test
     test_query = "Deprem anında ne yapmalıyım?"
-    found_documents = retrieve_content(test_query, k=3)
-    
+
+    print("(*) Loading embedding model for test...")
+    test_embeddings = HuggingFaceEmbeddings(
+        model_name=EMBEDDING_MODEL,
+        model_kwargs={'local_files_only': True},
+        encode_kwargs={'normalize_embeddings': True}
+    )
+
+    found_documents = retrieve_content(test_query, test_embeddings, k=3)
+
     print("\n" + "=" * 50)
     print("Search Results")
     print("=" * 50)
-    
-    MAX_DISTANCE = 0.85
-    
-    for i, (text, distance) in enumerate(found_documents):
+
+    for i, (text, distance, source_file, page_number) in enumerate(found_documents):
         if distance > MAX_DISTANCE:
-            print(f"\n[-] Result {i+1} ignored because {distance:.4f} is too high.")
+            print(f"\n[-] Result {i+1} ignored (distance {distance:.4f} > {MAX_DISTANCE})")
             continue
-        print(f"\n--- Result {i+1} (Distance: {distance:.4f}) ---")
+        source_label = f"{source_file} (s.{page_number})" if source_file else "Bilinmeyen kaynak"
+        print(f"\n--- Result {i+1} (Distance: {distance:.4f}) | {source_label} ---")
         print(text)

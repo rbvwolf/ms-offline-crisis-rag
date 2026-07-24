@@ -1,25 +1,18 @@
+import os
 import re
+import sys
 import time
 from foundry_local_sdk import FoundryLocalManager
 from foundry_local_sdk.configuration import Configuration
 from langchain_huggingface import HuggingFaceEmbeddings
-# Import retrieve_content() from retriever.py
+
+# Add src/ to path so we can import from core.config
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from core.config import (
+    EMBEDDING_MODEL, MAX_CONTEXT_CHARS,
+    MAX_DISTANCE, QUALITY_GATE_DISTANCE, STREAM_TIMEOUT_SECONDS
+)
 from retriever import retrieve_content
-
-# Multilingual embedding model — supports Turkish (50+ languages, same 384-dim as MiniLM-L6)
-EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
-
-# Safe context limit to prevent RAM overflow during prefill phase
-MAX_CONTEXT_CHARS = 2500
-
-# Only use chunks closer than this distance; beyond it the context is too irrelevant
-MAX_DISTANCE = 0.90
-
-# If the single best chunk is still farther than this, return "not found" immediately
-QUALITY_GATE_DISTANCE = 0.90
-
-# Hard time limit for streaming generation (seconds)
-STREAM_TIMEOUT_SECONDS = 180
 
 
 def _select_and_register_ep(manager):
@@ -31,12 +24,10 @@ def _select_and_register_ep(manager):
     selected_ep = None
     is_already_registered = False
 
-    # Find the best available EP based on priority
     for target in priority_eps:
         for ep in available_eps:
             if getattr(ep, 'name', '') == target:
                 selected_ep = target
-                # Check if its already downloaded
                 is_already_registered = getattr(ep, 'is_registered', False)
                 break
         if selected_ep:
@@ -67,10 +58,8 @@ def setup_system():
     FoundryLocalManager.initialize(Configuration(app_name="OfflineCrisisRAG"))
     manager = FoundryLocalManager.instance
 
-    # Hardware Acceleration GPU Setup
     print("(*) Analyzing system hardware for acceleration")
     _select_and_register_ep(manager)
-    #----------------------------------------------------------------------------
 
     model_name = "phi-3.5-mini"
     print(f"(*) Loading offline model: {model_name}")
@@ -94,68 +83,82 @@ def setup_system():
 def _clean_chunk_text(text):
     """
     Strips PDF artifacts from a chunk before it is sent to the LLM:
-    - Leading page numbers like '35\n' or '2 / 50\n'
+    - Leading page numbers like '35\\n' or '2 / 50\\n'
     - Excessive blank lines
-    - Hyphenated line breaks (e.g. 'ha-\nreket' -> 'hareket')
+    - Hyphenated line breaks (e.g. 'ha-\\nreket' -> 'hareket')
     """
-    # Repair hyphenated line-break splits common in PDF extraction
     text = re.sub(r'-\n\s*', '', text)
-    # Remove leading standalone page numbers (e.g. "35\n" at start)
     text = re.sub(r'^\s*\d+\s*\n', '', text)
-    # Collapse runs of whitespace/newlines into a single space
     text = re.sub(r'\n+', ' ', text)
     text = re.sub(r' {2,}', ' ', text)
     return text.strip()
 
 
 def _build_context(retrieved_docs):
-    # Filter bad distances, clean each chunk, and cap total to prevent prefill overflow
+    """
+    Filters chunks by distance, cleans text, caps total chars, and
+    collects unique citation labels. Returns (context_string, [citations]).
+    """
     chunks = []
+    citations = []
     total_chars = 0
 
-    for text, distance in retrieved_docs:
+    for row in retrieved_docs:
+        text, distance = row[0], row[1]
+        source_file = row[2] if len(row) > 2 else None
+        page_number = row[3] if len(row) > 3 else -1
+
         if distance > MAX_DISTANCE:
             continue
+
         cleaned = _clean_chunk_text(text)
         if not cleaned:
             continue
+
         if total_chars + len(cleaned) > MAX_CONTEXT_CHARS:
             remaining = MAX_CONTEXT_CHARS - total_chars
             if remaining > 100:
                 chunks.append(cleaned[:remaining])
             break
+
         chunks.append(cleaned)
         total_chars += len(cleaned)
 
-    return "\n\n".join(chunks)
+        # Build citation label for this chunk
+        if source_file:
+            name = os.path.splitext(source_file)[0]
+            # Truncate long auto-generated filenames
+            if len(name) > 45:
+                name = name[:45] + "..."
+            label = f"{name} (s.{page_number + 1})" if page_number >= 0 else name
+            if label not in citations:
+                citations.append(label)
+
+    return "\n\n".join(chunks), citations
 
 
 def answer_query(user_question, model, embeddings_model):
     print(f"\n[?] Question: {user_question}")
 
-    # 1. Retrieve the top context paragraphs from SQLite
     print("(*) Searching local database for answers")
     retrieved_docs = retrieve_content(user_question, embeddings_model, k=5)
 
     if not retrieved_docs:
         return "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının."
 
-    # Log distances for debugging
-    for text, dist in retrieved_docs:
+    for row in retrieved_docs:
+        text, dist = row[0], row[1]
         print(f"    dist={dist:.4f} | {text[:60].strip()!r}")
 
-    # Quality gate: if even the best chunk is too far, the topic is not in our DB
     best_distance = retrieved_docs[0][1]
     if best_distance > QUALITY_GATE_DISTANCE:
         return "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının."
 
-    # Combine retrieved chunks into a single context string (filtering out bad distances)
-    context_text = _build_context(retrieved_docs)
+    context_text, citations = _build_context(retrieved_docs)
 
     if not context_text:
         return "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının."
 
-    # 2. Build the System Prompt using the context
     system_prompt = f"""You are the 'Offline Crisis Assistant', an AI designed to operate directly on a user's device during extreme emergencies where the internet is down. Your sole purpose is to save lives, provide calm psychological support, and manage resources safely.
 
     CRITICAL DIRECTIVES:
@@ -175,7 +178,6 @@ def answer_query(user_question, model, embeddings_model):
 
     Remember: Keep it short, factual, in Turkish, and strictly bound to the context."""
 
-    # 3. Stream tokens from local LLM — avoids SDK-level operation cancellation
     print("(*) Generating answer from context")
     chat_client = model.get_chat_client()
 
@@ -205,8 +207,15 @@ def answer_query(user_question, model, embeddings_model):
                 print(delta, end="", flush=True)
                 full_response.append(delta)
 
-        print()  # newline after streamed output
-        return None  # already printed inline, caller skips re-printing
+        print()
+
+        # Print source citations after the answer (programmatic, not hallucinated)
+        if citations:
+            print("\n--- Kaynaklar ---")
+            for c in citations:
+                print(f"  • {c}")
+
+        return None  # already printed inline
 
     except Exception as e:
         return f"[-] Generation failed: {e}"
@@ -220,7 +229,6 @@ if __name__ == "__main__":
     print("="*50)
 
     try:
-        # Infinite CLI Loop
         while True:
             user_input = input("\n[Sen]: ")
 
@@ -233,7 +241,6 @@ if __name__ == "__main__":
 
             result = answer_query(user_input, offline_model, embeddings_model)
 
-            # answer_query returns None if it already streamed inline, or an error string
             if result is not None:
                 print("\n" + "="*50)
                 print("Asistan:")

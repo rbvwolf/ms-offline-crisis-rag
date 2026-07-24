@@ -1,19 +1,18 @@
 import os
 import re
+import sys
 import sqlite3
 import sqlite_vec
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 
-raw_pdf_dir = "data/raw_pdfs"
-db_path = "db/survival_knowledge.db"
-
-# Must stay in sync with retriever.py and generator.py
-EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
-
-# Minimum meaningful content length for a chunk (chars)
-MIN_CHUNK_LENGTH = 80
+# Add src/ to path so we can import from core.config
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from core.config import (
+    EMBEDDING_MODEL, DB_PATH, RAW_PDF_DIR,
+    MIN_CHUNK_LENGTH, CHUNK_SIZE, CHUNK_OVERLAP
+)
 
 
 def _is_garbage_chunk(text):
@@ -41,18 +40,26 @@ def _is_garbage_chunk(text):
 
 def ingest_pdfs_to_sqlite():
     print("(*) Connecting to DB and checking processed files")
-    db = sqlite3.connect(db_path)
+    db = sqlite3.connect(DB_PATH)
 
-    # Creating new table to track processed files
+    # Track which files have already been processed
     db.execute("""
         CREATE TABLE IF NOT EXISTS processed_files (
             filename TEXT PRIMARY KEY,
             processed_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # Stores source file and page number for each chunk (for citations)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS chunks_metadata (
+            chunk_id INTEGER PRIMARY KEY,
+            source_file TEXT,
+            page_number INTEGER
+        )
+    """)
     db.commit()
 
-    # Fetch already processed files from DB
     cursor = db.cursor()
     cursor.execute("SELECT filename FROM processed_files")
     processed_set = set(row[0] for row in cursor.fetchall())
@@ -61,12 +68,12 @@ def ingest_pdfs_to_sqlite():
     new_filenames = []
 
     print("(*) Scanning raw_pdfs folder")
-    for filename in os.listdir(raw_pdf_dir):
+    for filename in os.listdir(RAW_PDF_DIR):
         if filename.endswith(".pdf"):
             if filename in processed_set:
                 print(f"[-] Skipping (Already processed): {filename}")
             else:
-                file_path = os.path.join(raw_pdf_dir, filename)
+                file_path = os.path.join(RAW_PDF_DIR, filename)
                 try:
                     print(f"[+] Found new file. Reading: {filename}")
                     loader = PyPDFLoader(file_path)
@@ -83,35 +90,35 @@ def ingest_pdfs_to_sqlite():
 
     print(f"(*) Found {len(new_documents)} pages of document. Chunking...")
 
-    # Chunking texts in documents
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=750, chunk_overlap=100
+        chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP
     )
     raw_chunks = text_splitter.split_documents(new_documents)
     print(f"(*) Documents split into {len(raw_chunks)} raw pieces.")
 
-    # Filter out garbage chunks (headers, footers, page numbers, encoding artifacts)
-    clean_texts = []
+    # Filter garbage chunks and preserve source metadata from LangChain Document objects
+    clean_chunks = []  # list of (text, source_file, page_number)
     skipped = 0
     for chunk in raw_chunks:
         text = chunk.page_content
         if _is_garbage_chunk(text):
             skipped += 1
         else:
-            clean_texts.append(text)
+            source_file = os.path.basename(chunk.metadata.get('source', 'Bilinmeyen'))
+            page_number = chunk.metadata.get('page', -1)
+            clean_chunks.append((text, source_file, page_number))
 
-    print(f"(*) After quality filter: {len(clean_texts)} usable chunks ({skipped} garbage chunks removed)")
+    print(f"(*) After quality filter: {len(clean_chunks)} usable chunks ({skipped} garbage chunks removed)")
 
-    # Loading offline embedding model
     print(f"(*) Loading embedding model: {EMBEDDING_MODEL}")
     embeddings_model = HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL,
         encode_kwargs={'normalize_embeddings': True}
     )
 
+    clean_texts = [t for t, s, p in clean_chunks]
     vectors = embeddings_model.embed_documents(clean_texts)
 
-    # Save to SQL Vector DB without langchain
     print("(*) Saving vectors to SQLite database with sqlite-vec")
     db.enable_load_extension(True)
     sqlite_vec.load(db)
@@ -127,10 +134,15 @@ def ingest_pdfs_to_sqlite():
     """)
 
     cursor = db.cursor()
-    for text, vector in zip(clean_texts, vectors):
+    for (text, source_file, page_number), vector in zip(clean_chunks, vectors):
         cursor.execute(
             "INSERT INTO survival_vectors(text, embedding) VALUES (?, ?)",
             (text, sqlite_vec.serialize_float32(vector))
+        )
+        chunk_id = cursor.lastrowid
+        cursor.execute(
+            "INSERT INTO chunks_metadata(chunk_id, source_file, page_number) VALUES (?, ?, ?)",
+            (chunk_id, source_file, page_number)
         )
 
     for filename in new_filenames:
@@ -138,7 +150,7 @@ def ingest_pdfs_to_sqlite():
 
     db.commit()
     db.close()
-    print(f"(*) Successful. Vector database saved and updated to: {db_path}")
+    print(f"(*) Successful. Vector database saved and updated to: {DB_PATH}")
 
 
 if __name__ == "__main__":
