@@ -20,7 +20,8 @@ CHUNK_OVERLAP = 100         # chars of overlap between consecutive chunks
 
 # --- Retrieval ---
 MAX_DISTANCE = 0.85         # chunks beyond this distance are discarded from context
-QUALITY_GATE_DISTANCE = 0.80  # if even the best chunk exceeds this, return "not found"
+QUALITY_GATE_DISTANCE = 0.85  # if even the best chunk exceeds this, return "not found"
+MIN_USEFUL_WORDS = 10       # cleaned chunks shorter than this are skipped (noise filter)
 
 # --- Generation ---
 MAX_CONTEXT_CHARS = 2500    # hard cap on total context sent to the LLM
