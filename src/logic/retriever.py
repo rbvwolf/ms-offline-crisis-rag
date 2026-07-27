@@ -32,13 +32,16 @@ def open_db():
     return db
 
 
-def retrieve_content(query, embeddings_model, db, k=5):
+def retrieve_content(query, embeddings_model, db, k=5, query_vector=None):
     """
     Embeds the query and runs a KNN search against the persistent db connection.
+    If query_vector is provided (e.g. from query cache), embedding is skipped.
     Returns a list of (text, distance, source_file, page_number) tuples.
     """
     print(f"(*) Analyzing user query: {query}")
-    query_vector = embeddings_model.embed_query(query)
+
+    if query_vector is None:
+        query_vector = embeddings_model.embed_query(query)
 
     cursor = db.cursor()
     serialized_query = sqlite_vec.serialize_float32(query_vector)

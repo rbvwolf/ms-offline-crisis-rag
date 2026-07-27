@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import time
+import numpy as np
 from foundry_local_sdk import FoundryLocalManager
 from foundry_local_sdk.configuration import Configuration
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -11,9 +12,113 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from core.config import (
     EMBEDDING_MODEL, MAX_CONTEXT_CHARS,
     MAX_DISTANCE, QUALITY_GATE_DISTANCE,
-    STREAM_TIMEOUT_SECONDS, MAX_HISTORY_TURNS
+    STREAM_TIMEOUT_SECONDS, MAX_HISTORY_TURNS,
+    CACHE_HIT_THRESHOLD
 )
 from retriever import open_db, retrieve_content
+
+
+# ---------------------------------------------------------------------------
+# Query expansion: if user types 1-2 words, append relevant keywords
+# to help the embedding model find better matches in the knowledge base.
+# ---------------------------------------------------------------------------
+_QUERY_EXPANSIONS = {
+    "deprem":       "deprem anında güvenli davranış sarsıntı enkaz",
+    "yangın":       "yangın söndürme kaçış tahliye duman",
+    "su":           "su arıtma temizleme içilebilir hale getirme",
+    "ilk yardım":   "ilk yardım acil müdahale yaralı",
+    "mors":         "mors alfabesi kısa uzun sinyal iletişim",
+    "kırık":        "kırık kol bacak atel sabitleme müdahale",
+    "yanık":        "yanık deri soğutma sarma müdahale",
+    "kanama":       "kanama yara baskı uygulama durdurma",
+    "enkaz":        "enkaz altında nefes bekleme kurtarma sinyal",
+    "rasyon":       "rasyon yiyecek su günlük plan hesaplama",
+    "barınak":      "barınak sığınak çadır kurma afet",
+    "telsiz":       "telsiz haberleşme frekans PMR acil iletişim",
+    "psikoloji":    "psikolojik destek sakinleştirme panik stres",
+    "çocuk":        "çocuk sakinleştirme panik korku psikolojik",
+}
+
+# ---------------------------------------------------------------------------
+# Pre-embedded canonical queries used to "snap" similar user queries to a
+# known, well-formed version — improves retrieval consistency.
+# ---------------------------------------------------------------------------
+_COMMON_CRISIS_QUERIES = [
+    "deprem anında ne yapmalıyım güvenli davranış",
+    "su nasıl arıtılır içilebilir hale getirilir",
+    "kırık kola nasıl ilk yardım yapılır atel",
+    "mors alfabesi nasıl kullanılır sinyal verme",
+    "yangın çıkarsa ne yapmalı kaçış tahliye",
+    "yara kanamayı nasıl durdururum baskı",
+    "enkaz altında kaldım ne yapayım hayatta kalma",
+    "bebek çocuk panikliyor sakinleştirme psikoloji",
+    "afette yiyecek su rasyon günlük plan",
+    "deprem sonrası gaz kaçağı elektrik tehlikesi",
+    "mors işaretleri sinyal sos acil",
+    "boğulma ilk yardım kurtarma",
+]
+
+
+def _expand_short_query(query):
+    """
+    If the query is 1-2 words and matches a known keyword,
+    appends relevant terms to improve retrieval quality.
+    """
+    q = query.strip().lower()
+    if len(q.split()) > 3:
+        return query  # long enough, no expansion needed
+
+    for keyword, expansion in _QUERY_EXPANSIONS.items():
+        if keyword in q:
+            expanded = f"{query} {expansion}"
+            print(f"(*) Short query expanded: '{query}' -> '{expanded[:60]}...'")
+            return expanded
+
+    return query
+
+
+def _build_query_cache(embeddings_model):
+    """
+    Pre-embeds all canonical crisis queries at startup.
+    Returns a dict {query_string: np.array(embedding)}.
+    The small startup cost (~1s) saves embedding time on repeated common queries.
+    """
+    print(f"(*) Pre-computing cache for {len(_COMMON_CRISIS_QUERIES)} canonical queries...")
+    cache = {}
+    for q in _COMMON_CRISIS_QUERIES:
+        cache[q] = np.array(embeddings_model.embed_query(q), dtype=np.float32)
+    print("[+] Query cache ready.")
+    return cache
+
+
+def _resolve_query(query, embeddings_model, query_cache):
+    """
+    Embeds the query. If a canonical pre-embedded query is within
+    CACHE_HIT_THRESHOLD, returns that canonical embedding instead.
+    This normalizes near-identical queries to a consistent vector.
+    Always returns a plain Python list suitable for sqlite_vec.
+    """
+    user_vec = np.array(embeddings_model.embed_query(query), dtype=np.float32)
+
+    if not query_cache:
+        return user_vec.tolist()
+
+    best_dist = float('inf')
+    best_canonical = None
+    best_vec = None
+
+    for canonical, cached_vec in query_cache.items():
+        dist = float(np.linalg.norm(user_vec - cached_vec))
+        if dist < best_dist:
+            best_dist = dist
+            best_canonical = canonical
+            best_vec = cached_vec
+
+    if best_dist < CACHE_HIT_THRESHOLD:
+        print(f"(*) Cache hit: '{best_canonical[:50]}' (dist={best_dist:.3f})")
+        return best_vec.tolist()
+
+    return user_vec.tolist()
 
 
 def _select_and_register_ep(manager):
@@ -81,7 +186,10 @@ def setup_system():
     # Open a single persistent DB connection for the entire session
     db = open_db()
 
-    return model, embeddings_model, db
+    # Pre-embed canonical queries for fast normalization at query time
+    query_cache = _build_query_cache(embeddings_model)
+
+    return model, embeddings_model, db, query_cache
 
 
 def _clean_chunk_text(text):
@@ -140,9 +248,9 @@ def _build_context(retrieved_docs):
     return "\n\n".join(chunks), citations
 
 
-def answer_query(user_question, model, embeddings_model, db, chat_history):
+def answer_query(user_question, model, embeddings_model, db, chat_history, query_cache):
     """
-    Retrieves relevant context, builds a multi-turn message list, and streams
+    Expands short queries, resolves via cache, retrieves context, and streams
     the LLM response token by token.
 
     Returns: (response_text: str, was_streamed: bool)
@@ -151,12 +259,23 @@ def answer_query(user_question, model, embeddings_model, db, chat_history):
     """
     print(f"\n[?] Question: {user_question}")
 
+    # 1. Expand short queries (1-2 words) before retrieval
+    expanded_query = _expand_short_query(user_question)
+
+    # 2. Resolve to canonical embedding if very close to a pre-cached query
+    query_vector = _resolve_query(expanded_query, embeddings_model, query_cache)
+
+    # 3. Retrieve — pass pre-computed vector to skip redundant embedding
     print("(*) Searching local database for answers")
-    retrieved_docs = retrieve_content(user_question, embeddings_model, db, k=5)
+    retrieved_docs = retrieve_content(
+        expanded_query, embeddings_model, db, k=3, query_vector=query_vector
+    )
 
     if not retrieved_docs:
         return "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının.", False
 
+    # 4. Show RAW results (truncated) for debugging
+    print("(*) Raw retrieval results:")
     for row in retrieved_docs:
         text, dist = row[0], row[1]
         print(f"    dist={dist:.4f} | {text[:60].strip()!r}")
@@ -170,25 +289,30 @@ def answer_query(user_question, model, embeddings_model, db, chat_history):
     if not context_text:
         return "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının.", False
 
-    system_prompt = f"""You are the 'Offline Crisis Assistant', an AI designed to operate directly on a user's device during extreme emergencies where the internet is down. Your sole purpose is to save lives, provide calm psychological support, and manage resources safely.
+    # 5. Show CLEANED context so we can verify what actually goes to the LLM
+    cleaned_chunks = context_text.split("\n\n")
+    print(f"(*) Cleaned context → LLM ({len(context_text)} chars, {len(cleaned_chunks)} chunk(s)):")
+    for i, ck in enumerate(cleaned_chunks, 1):
+        print(f"    [Chunk {i}]: {ck[:120].strip()}")
 
-    CRITICAL DIRECTIVES:
-    1. STRICT GROUNDING (RAG): You must answer the user's query using ONLY the information provided in the <CONTEXT> block below. If the answer is not present in the context, you MUST state: "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının." Do NOT hallucinate or invent information under any circumstances.
-    2. OUTPUT LANGUAGE: Use Turkish as default, if the user give input fully %100 English, use English. First language is TURKISH.
-    3. CLI OPTIMIZATION: Your output will be displayed on a black terminal screen to save battery. Use extremely short, concise sentences. Use bullet points. Avoid long paragraphs.
-    4. NO DISCLAIMERS: NEVER add explanations. NEVER add notes or disclaimers. Do NOT say "Not:" or "Note:". Just provide the raw facts.
-    5. CONVERSATION: Previous turns are provided for context. Use them to understand follow-up questions (e.g. "peki ya...", "bunu nasıl yaparım", "kaç tane gerekir").
+    # Shortened system prompt — phi-3.5-mini follows concise instructions more reliably
+    system_prompt = f"""Sen 'Offline Kriz Asistanı'sın. Görevin internetsiz, afet ortamında hayat kurtarmak.
 
-    SPECIAL MODES & TRIGGERS:
-    - PANIC & CHILD MODE: If the user input expresses fear, panic, or mentions crying children, instantly adopt a highly empathetic, calming, and soothing tone. Prioritize psychological first aid or fairy tales found in the <CONTEXT>.
-    - TRIAGE MODE: For urgent medical situations, DO NOT provide a massive wall of text. Provide immediate first steps and ask a direct Yes/No question to guide the user (e.g., "Hastanın bilinci açık mı? (Evet/Hayır)").
-    - RATION CALCULATION: If the user inputs numbers regarding food or water supplies, acknowledge the inventory and provide a strictly logical, daily rationing plan based on survival guidelines in the <CONTEXT>.
+KURALLAR:
+1. SADECE aşağıdaki <CONTEXT> içindeki bilgileri kullan. Yoksa: "Veritabanımda bu bilgi bulunmuyor." de.
+2. Türkçe yaz. (Soru İngilizce ise İngilizce cevap ver.)
+3. Kısa yaz: madde listesi, uzun paragraf yok.
+4. Uyarı, not veya açıklama ekleme. Sadece gerçeği ver.
+5. Önceki konuşmayı takip et; "peki ya", "bunlar" gibi devam sorularında bağlamı kullan.
 
-    <CONTEXT>
-    {context_text}
-    </CONTEXT>
+MODLAR:
+- Panik/Çocuk: Sakin, teskin edici ton. Psikolojik destek öncelikli.
+- Tıbbi acil: İlk adımı ver, ardından Evet/Hayır sorusu sor (örn: "Bilinç açık mı?").
+- Rasyon: Verilen miktar ve kişi sayısıyla günlük plan yap.
 
-    Remember: Keep it short, factual, in Turkish, and strictly bound to the context."""
+<CONTEXT>
+{context_text}
+</CONTEXT>"""
 
     print("(*) Generating answer from context")
     chat_client = model.get_chat_client()
@@ -234,7 +358,7 @@ def answer_query(user_question, model, embeddings_model, db, chat_history):
 
 
 if __name__ == "__main__":
-    offline_model, embeddings_model, db = setup_system()
+    offline_model, embeddings_model, db, query_cache = setup_system()
     print("\n" + "="*50)
     print("-- Çevrim Dışı Kriz Asistanı (Offline Crisis Assistant)--")
     print("Çıkmak için 'kapat', 'q', 'cikis', 'exit' yazın.")
@@ -255,7 +379,7 @@ if __name__ == "__main__":
                 continue
 
             result, was_streamed = answer_query(
-                user_input, offline_model, embeddings_model, db, chat_history
+                user_input, offline_model, embeddings_model, db, chat_history, query_cache
             )
 
             # If not streamed inline, print now (error or not-found message)
