@@ -9,18 +9,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from core.config import EMBEDDING_MODEL, DB_PATH, MAX_DISTANCE
 
 
-def retrieve_content(query, embeddings_model, k=5):
-    print(f"(*) Analyzing user query: {query}")
-
-    query_vector = embeddings_model.embed_query(query)
-
-    print("(*) Connecting to vector database")
+def open_db():
+    """
+    Opens and returns a configured DB connection for the session.
+    Loads the sqlite-vec extension and ensures required tables exist.
+    Call this once at startup and pass the connection to retrieve_content().
+    """
     db = sqlite3.connect(DB_PATH)
     db.enable_load_extension(True)
     sqlite_vec.load(db)
     db.enable_load_extension(False)
 
-    # Ensure chunks_metadata table exists (safe migration for DBs ingested before this change)
+    # Safe migration: creates table only if it does not already exist
     db.execute("""
         CREATE TABLE IF NOT EXISTS chunks_metadata (
             chunk_id INTEGER PRIMARY KEY,
@@ -28,11 +28,22 @@ def retrieve_content(query, embeddings_model, k=5):
             page_number INTEGER
         )
     """)
+    print(f"(*) Connected to vector database: {os.path.basename(DB_PATH)}")
+    return db
+
+
+def retrieve_content(query, embeddings_model, db, k=5):
+    """
+    Embeds the query and runs a KNN search against the persistent db connection.
+    Returns a list of (text, distance, source_file, page_number) tuples.
+    """
+    print(f"(*) Analyzing user query: {query}")
+    query_vector = embeddings_model.embed_query(query)
 
     cursor = db.cursor()
     serialized_query = sqlite_vec.serialize_float32(query_vector)
 
-    print(f"(*) Searcing for the top {k} most relevant paragraphs")
+    print(f"(*) Searching for the top {k} most relevant paragraphs")
     cursor.execute("""
         SELECT chunk_id, text, distance
         FROM survival_vectors
@@ -42,7 +53,7 @@ def retrieve_content(query, embeddings_model, k=5):
 
     raw_results = cursor.fetchall()
 
-    # Enrich each result with source metadata (gracefully handles missing metadata)
+    # Enrich each result with source metadata (None if DB was ingested before citation support)
     results = []
     for chunk_id, text, distance in raw_results:
         cursor.execute(
@@ -54,12 +65,11 @@ def retrieve_content(query, embeddings_model, k=5):
         page_number = meta[1] if meta else -1
         results.append((text, distance, source_file, page_number))
 
-    db.close()
     return results
 
 
 if __name__ == "__main__":
-    # Standalone test
+    # Standalone test — opens its own db connection, closes it when done
     test_query = "Deprem anında ne yapmalıyım?"
 
     print("(*) Loading embedding model for test...")
@@ -69,16 +79,20 @@ if __name__ == "__main__":
         encode_kwargs={'normalize_embeddings': True}
     )
 
-    found_documents = retrieve_content(test_query, test_embeddings, k=3)
+    test_db = open_db()
+    try:
+        found_documents = retrieve_content(test_query, test_embeddings, test_db, k=3)
 
-    print("\n" + "=" * 50)
-    print("Search Results")
-    print("=" * 50)
+        print("\n" + "=" * 50)
+        print("Search Results")
+        print("=" * 50)
 
-    for i, (text, distance, source_file, page_number) in enumerate(found_documents):
-        if distance > MAX_DISTANCE:
-            print(f"\n[-] Result {i+1} ignored (distance {distance:.4f} > {MAX_DISTANCE})")
-            continue
-        source_label = f"{source_file} (s.{page_number})" if source_file else "Bilinmeyen kaynak"
-        print(f"\n--- Result {i+1} (Distance: {distance:.4f}) | {source_label} ---")
-        print(text)
+        for i, (text, distance, source_file, page_number) in enumerate(found_documents):
+            if distance > MAX_DISTANCE:
+                print(f"\n[-] Result {i+1} ignored (distance {distance:.4f} > {MAX_DISTANCE})")
+                continue
+            source_label = f"{source_file} (s.{page_number})" if source_file else "Bilinmeyen kaynak"
+            print(f"\n--- Result {i+1} (Distance: {distance:.4f}) | {source_label} ---")
+            print(text)
+    finally:
+        test_db.close()

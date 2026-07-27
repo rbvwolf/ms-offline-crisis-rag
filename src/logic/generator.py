@@ -10,9 +10,10 @@ from langchain_huggingface import HuggingFaceEmbeddings
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from core.config import (
     EMBEDDING_MODEL, MAX_CONTEXT_CHARS,
-    MAX_DISTANCE, QUALITY_GATE_DISTANCE, STREAM_TIMEOUT_SECONDS
+    MAX_DISTANCE, QUALITY_GATE_DISTANCE,
+    STREAM_TIMEOUT_SECONDS, MAX_HISTORY_TURNS
 )
-from retriever import retrieve_content
+from retriever import open_db, retrieve_content
 
 
 def _select_and_register_ep(manager):
@@ -77,7 +78,10 @@ def setup_system():
         encode_kwargs={'normalize_embeddings': True}
     )
 
-    return model, embeddings_model
+    # Open a single persistent DB connection for the entire session
+    db = open_db()
+
+    return model, embeddings_model, db
 
 
 def _clean_chunk_text(text):
@@ -127,7 +131,6 @@ def _build_context(retrieved_docs):
         # Build citation label for this chunk
         if source_file:
             name = os.path.splitext(source_file)[0]
-            # Truncate long auto-generated filenames
             if len(name) > 45:
                 name = name[:45] + "..."
             label = f"{name} (s.{page_number + 1})" if page_number >= 0 else name
@@ -137,14 +140,22 @@ def _build_context(retrieved_docs):
     return "\n\n".join(chunks), citations
 
 
-def answer_query(user_question, model, embeddings_model):
+def answer_query(user_question, model, embeddings_model, db, chat_history):
+    """
+    Retrieves relevant context, builds a multi-turn message list, and streams
+    the LLM response token by token.
+
+    Returns: (response_text: str, was_streamed: bool)
+      - was_streamed=True  → tokens already printed inline; caller must not re-print
+      - was_streamed=False → caller should print the response (error / not-found)
+    """
     print(f"\n[?] Question: {user_question}")
 
     print("(*) Searching local database for answers")
-    retrieved_docs = retrieve_content(user_question, embeddings_model, k=5)
+    retrieved_docs = retrieve_content(user_question, embeddings_model, db, k=5)
 
     if not retrieved_docs:
-        return "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının."
+        return "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının.", False
 
     for row in retrieved_docs:
         text, dist = row[0], row[1]
@@ -152,12 +163,12 @@ def answer_query(user_question, model, embeddings_model):
 
     best_distance = retrieved_docs[0][1]
     if best_distance > QUALITY_GATE_DISTANCE:
-        return "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının."
+        return "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının.", False
 
     context_text, citations = _build_context(retrieved_docs)
 
     if not context_text:
-        return "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının."
+        return "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının.", False
 
     system_prompt = f"""You are the 'Offline Crisis Assistant', an AI designed to operate directly on a user's device during extreme emergencies where the internet is down. Your sole purpose is to save lives, provide calm psychological support, and manage resources safely.
 
@@ -166,6 +177,7 @@ def answer_query(user_question, model, embeddings_model):
     2. OUTPUT LANGUAGE: Use Turkish as default, if the user give input fully %100 English, use English. First language is TURKISH.
     3. CLI OPTIMIZATION: Your output will be displayed on a black terminal screen to save battery. Use extremely short, concise sentences. Use bullet points. Avoid long paragraphs.
     4. NO DISCLAIMERS: NEVER add explanations. NEVER add notes or disclaimers. Do NOT say "Not:" or "Note:". Just provide the raw facts.
+    5. CONVERSATION: Previous turns are provided for context. Use them to understand follow-up questions (e.g. "peki ya...", "bunu nasıl yaparım", "kaç tane gerekir").
 
     SPECIAL MODES & TRIGGERS:
     - PANIC & CHILD MODE: If the user input expresses fear, panic, or mentions crying children, instantly adopt a highly empathetic, calming, and soothing tone. Prioritize psychological first aid or fairy tales found in the <CONTEXT>.
@@ -181,10 +193,10 @@ def answer_query(user_question, model, embeddings_model):
     print("(*) Generating answer from context")
     chat_client = model.get_chat_client()
 
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_question}
-    ]
+    # Build multi-turn message list: system → history → current question
+    messages = [{"role": "system", "content": system_prompt}]
+    messages.extend(chat_history)
+    messages.append({"role": "user", "content": user_question})
 
     try:
         stream = chat_client.complete_streaming_chat(messages=messages)
@@ -215,18 +227,21 @@ def answer_query(user_question, model, embeddings_model):
             for c in citations:
                 print(f"  • {c}")
 
-        return None  # already printed inline
+        return "".join(full_response), True
 
     except Exception as e:
-        return f"[-] Generation failed: {e}"
+        return f"[-] Generation failed: {e}", False
 
 
 if __name__ == "__main__":
-    offline_model, embeddings_model = setup_system()
+    offline_model, embeddings_model, db = setup_system()
     print("\n" + "="*50)
     print("-- Çevrim Dışı Kriz Asistanı (Offline Crisis Assistant)--")
     print("Çıkmak için 'kapat', 'q', 'cikis', 'exit' yazın.")
     print("="*50)
+
+    # Stores last MAX_HISTORY_TURNS turns as {"role": ..., "content": ...} dicts
+    chat_history = []
 
     try:
         while True:
@@ -239,13 +254,25 @@ if __name__ == "__main__":
             if not user_input.strip():
                 continue
 
-            result = answer_query(user_input, offline_model, embeddings_model)
+            result, was_streamed = answer_query(
+                user_input, offline_model, embeddings_model, db, chat_history
+            )
 
-            if result is not None:
+            # If not streamed inline, print now (error or not-found message)
+            if result and not was_streamed:
                 print("\n" + "="*50)
                 print("Asistan:")
                 print("="*50)
                 print(result)
 
+            # Only successful LLM answers go into conversation history
+            if was_streamed and result:
+                chat_history.append({"role": "user", "content": user_input})
+                chat_history.append({"role": "assistant", "content": result})
+                # Keep only the last MAX_HISTORY_TURNS turns (2 messages per turn)
+                if len(chat_history) > MAX_HISTORY_TURNS * 2:
+                    chat_history = chat_history[-(MAX_HISTORY_TURNS * 2):]
+
     finally:
+        db.close()
         offline_model.unload()

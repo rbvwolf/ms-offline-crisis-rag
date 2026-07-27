@@ -25,3 +25,4 @@ QUALITY_GATE_DISTANCE = 0.90  # if even the best chunk exceeds this, return "not
 # --- Generation ---
 MAX_CONTEXT_CHARS = 2500    # hard cap on total context sent to the LLM
 STREAM_TIMEOUT_SECONDS = 180  # hard time limit for streaming generation
+MAX_HISTORY_TURNS = 3       # number of back-and-forth conversation turns kept in memory
