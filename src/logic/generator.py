@@ -1,3 +1,21 @@
+"""
+generator.py — LLM orchestration for the Offline Crisis Assistant.
+
+Responsibilities:
+  - Load/unload the phi-3.5-mini model via Foundry Local
+  - Load the embedding model (once at startup)
+  - Open a persistent DB connection for the session
+  - Pre-embed canonical query cache
+  - answer_query(): retrieve -> build context -> stream LLM response
+  - Parse <INVENTORY> blocks emitted by the LLM and persist them via StateManager
+  - Main CLI loop
+
+Helper logic lives in dedicated modules:
+  - query_processor.py  : keyword expansion, Turkish char normalization
+  - context_builder.py  : chunk cleaning, deduplication, context assembly
+  - state_manager.py    : persistent user inventory / situational profile
+"""
+
 import os
 import re
 import sys
@@ -7,8 +25,9 @@ from foundry_local_sdk import FoundryLocalManager
 from foundry_local_sdk.configuration import Configuration
 from langchain_huggingface import HuggingFaceEmbeddings
 
-# Add src/ to path so we can import from core.config
+# Ensure src/ is on the path so sibling packages resolve correctly
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+
 from core.config import (
     EMBEDDING_MODEL, MAX_CONTEXT_CHARS,
     MAX_DISTANCE, QUALITY_GATE_DISTANCE,
@@ -16,38 +35,19 @@ from core.config import (
     CACHE_HIT_THRESHOLD, MIN_USEFUL_WORDS
 )
 from retriever import open_db, retrieve_content
-
-# Module-level embedding cache: avoids re-embedding identical query strings
-_embed_cache: dict = {}
-
-
-# ---------------------------------------------------------------------------
-# Query expansion: if user types 1-2 words, append relevant keywords
-# to help the embedding model find better matches in the knowledge base.
-# ---------------------------------------------------------------------------
-# Keys use ASCII so matching works whether the user types with Turkish keyboard or not.
-# Values stay as full Turkish to give the embedding model better semantic signals.
-_QUERY_EXPANSIONS = {
-    "deprem":       "deprem aninda guvensiz sarsinti enkaz",
-    "yangin":       "yangin sondurme kacis tahliye duman",
-    "su":           "su aritma temizleme icilebilir hale getirme",
-    "ilk yardim":   "ilk yardim acil mudahale yarali",
-    "mors":         "mors alfabesi kisa uzun sinyal iletisim",
-    "kirik":        "kirik kol bacak atel sabitleme mudahale",
-    "yanik":        "yanik deri sogutma sarma mudahale",
-    "kanama":       "kanama yara baski uygulama durdurma",
-    "enkaz":        "enkaz altinda nefes bekleme kurtarma sinyal",
-    "rasyon":       "rasyon yiyecek su gunluk plan hesaplama",
-    "barinak":      "barinak siginak cadur kurma afet",
-    "telsiz":       "telsiz haberlesme frekans PMR acil iletisim",
-    "psikoloji":    "psikolojik destek sakinlestirme panik stres",
-    "cocuk":        "cocuk sakinlestirme panik korku psikolojik",
-}
-
+from query_processor import expand_query
+from context_builder import build_context
+from state_manager import StateManager, clean_llm_response, parse_explicit_inventory_command
 
 # ---------------------------------------------------------------------------
-# Pre-embedded canonical queries used to "snap" similar user queries to a
-# known, well-formed version — improves retrieval consistency.
+# Module-level caches (persist for the whole process lifetime)
+# ---------------------------------------------------------------------------
+_embed_cache: dict = {}   # query_string -> np.ndarray
+
+# ---------------------------------------------------------------------------
+# Pre-embedded canonical queries for fast query normalisation at runtime.
+# Adding a query here costs ~0.05 s at startup; it saves one embed() call
+# every time a user asks something semantically close to that query.
 # ---------------------------------------------------------------------------
 _COMMON_CRISIS_QUERIES = [
     "deprem anında ne yapmalıyım güvenli davranış",
@@ -64,48 +64,21 @@ _COMMON_CRISIS_QUERIES = [
     "boğulma ilk yardım kurtarma",
 ]
 
-
-def _normalize_for_matching(s):
-    """
-    Converts Turkish-specific characters to ASCII equivalents.
-    Used only for keyword matching — NOT for embedding (embedding needs real chars).
-    """
-    return (
-        s.replace('\u0131', 'i').replace('\u0130', 'i')   # ı İ
-         .replace('\u011f', 'g').replace('\u011e', 'g')   # ğ Ğ
-         .replace('\u00fc', 'u').replace('\u00dc', 'u')   # ü Ü
-         .replace('\u015f', 's').replace('\u015e', 's')   # ş Ş
-         .replace('\u00f6', 'o').replace('\u00d6', 'o')   # ö Ö
-         .replace('\u00e7', 'c').replace('\u00c7', 'c')   # ç Ç
-    )
+# Regex used to capture <INVENTORY>...</INVENTORY> blocks in LLM output
+_INVENTORY_RE = re.compile(
+    r'<INVENTORY>(.*?)</INVENTORY>',
+    re.DOTALL | re.IGNORECASE
+)
 
 
-def _expand_short_query(query):
-    """
-    If the query is 1-3 words and matches a known keyword (ASCII-normalized),
-    appends relevant terms to improve retrieval quality.
-    """
-    q = query.strip().lower()
-    if len(q.split()) > 3:
-        return query  # long enough, no expansion needed
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
-    q_norm = _normalize_for_matching(q)
-
-    for keyword, expansion in _QUERY_EXPANSIONS.items():
-        # keyword is already ASCII; q_norm is normalized — safe substring check
-        if keyword in q_norm:
-            expanded = f"{query} {expansion}"
-            print(f"(*) Short query expanded: '{query}' -> '{expanded[:60]}...'")
-            return expanded
-
-    return query
-
-
-def _build_query_cache(embeddings_model):
+def _build_query_cache(embeddings_model) -> dict:
     """
     Pre-embeds all canonical crisis queries at startup.
-    Returns a dict {query_string: np.array(embedding)}.
-    The small startup cost (~1s) saves embedding time on repeated common queries.
+    Returns {query_string: np.ndarray}.  Cost: ~1 s; saves time for common queries.
     """
     print(f"(*) Pre-computing cache for {len(_COMMON_CRISIS_QUERIES)} canonical queries...")
     cache = {}
@@ -115,13 +88,12 @@ def _build_query_cache(embeddings_model):
     return cache
 
 
-def _resolve_query(query, embeddings_model, query_cache):
+def _resolve_query(query: str, embeddings_model, query_cache: dict) -> list:
     """
-    Embeds the query (with in-session cache) and optionally snaps it to a
-    pre-embedded canonical query if very close (CACHE_HIT_THRESHOLD).
-    Always returns a plain Python list suitable for sqlite_vec.
+    Embeds query (with session-level cache) then optionally snaps it to the
+    nearest canonical pre-embedded query if within CACHE_HIT_THRESHOLD.
+    Returns a plain Python list ready for sqlite_vec serialisation.
     """
-    # Embedding cache: skip re-embedding if this exact string was already processed
     if query in _embed_cache:
         print("(*) Embedding cache hit")
         user_vec = _embed_cache[query]
@@ -135,7 +107,6 @@ def _resolve_query(query, embeddings_model, query_cache):
     best_dist = float('inf')
     best_canonical = None
     best_vec = None
-
     for canonical, cached_vec in query_cache.items():
         dist = float(np.linalg.norm(user_vec - cached_vec))
         if dist < best_dist:
@@ -151,10 +122,13 @@ def _resolve_query(query, embeddings_model, query_cache):
 
 
 def _select_and_register_ep(manager):
+    """Tries to register the best available GPU execution provider."""
     available_eps = manager.discover_eps()
-
-    # AMD GPU priority order: DirectML > WebGPU > CUDA
-    priority_eps = ['DirectMLExecutionProvider', 'WebGpuExecutionProvider', 'CUDAExecutionProvider']
+    priority_eps = [
+        'DirectMLExecutionProvider',
+        'WebGpuExecutionProvider',
+        'CUDAExecutionProvider',
+    ]
 
     selected_ep = None
     is_already_registered = False
@@ -188,7 +162,61 @@ def _select_and_register_ep(manager):
     return selected_ep
 
 
+def _strip_inventory_blocks(text: str, state_manager: StateManager) -> str:
+    """
+    Finds all <INVENTORY>...</INVENTORY> blocks in the LLM output, persists
+    each one via StateManager, then removes the blocks from the visible response.
+    The user never sees raw JSON — they only see the clean Turkish answer.
+    """
+    def handle_match(m):
+        state_manager.update_from_inventory_block(m.group(1))
+        return ""   # remove from visible output
+
+    return _INVENTORY_RE.sub(handle_match, text).strip()
+
+
+def _build_system_prompt(context_text: str, state_manager: StateManager) -> str:
+    """
+    Assembles the system prompt.  If the user has a saved inventory/profile,
+    it is injected BEFORE the RAG context so the model can use both.
+    """
+    state_block = state_manager.get_context_block()
+    state_section = f"\n{state_block}\n" if state_block else ""
+
+    system_prompt = f"""Sen 'Offline Kriz Asistani'sin. Gorev: internetsiz, afet ortaminda hayat kurtarmak.
+{state_section}
+KURALLAR:
+1. SADECE asagidaki <CONTEXT> icindeki bilgileri kullan. Yoksa: "Veritabanımda bu bilgi bulunmuyor." de.
+2. Turkce yaz. (Soru Ingilizce ise Ingilizce cevap ver.)
+3. Kisa yaz: madde listesi, uzun paragraf yok.
+4. Uyari, not, aciklama, takip sorusu veya ek yorum ekleme. Cevabın sonuna kesinlikle hicbir sey ekleme.
+5. Onceki konusmayi takip et; devam sorularinda baglami kullan.
+6. Rasyon hesabinda <KULLANICI_DURUMU> blokundaki envanter miktarlarini kullan; yoksa kullanicidan sor.
+
+MODLAR:
+- Panik/Cocuk: Sakin, teskin edici ton. Psikolojik destek oncelikli.
+- Tibbi acil: Ilk adimi ver, ardindan Evet/Hayir sorusu sor (orn: "Bilinc acik mi?").
+- Rasyon: Eldeki malzemeyle gunluk plan yap.
+
+<CONTEXT>
+{context_text}
+</CONTEXT>"""
+
+    return system_prompt
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
 def setup_system():
+    """
+    Initialises Foundry Local, loads the LLM and embedding model,
+    opens a persistent DB connection, pre-embeds canonical queries,
+    and creates a StateManager instance.
+
+    Returns: (model, embeddings_model, db, query_cache, state_manager)
+    """
     print("(*) Starting foundry local client")
     FoundryLocalManager.initialize(Configuration(app_name="OfflineCrisisRAG"))
     manager = FoundryLocalManager.instance
@@ -212,113 +240,50 @@ def setup_system():
         encode_kwargs={'normalize_embeddings': True}
     )
 
-    # Open a single persistent DB connection for the entire session
     db = open_db()
-
-    # Pre-embed canonical queries for fast normalization at query time
     query_cache = _build_query_cache(embeddings_model)
+    state_manager = StateManager()
 
-    return model, embeddings_model, db, query_cache
+    return model, embeddings_model, db, query_cache, state_manager
 
 
-def _clean_chunk_text(text):
+def answer_query(user_question, model, embeddings_model, db, chat_history,
+                 query_cache, state_manager: StateManager):
     """
-    Strips PDF artifacts from a chunk before it is sent to the LLM:
-    - Leading page numbers like '35\\n' or '2 / 50\\n'
-    - Excessive blank lines
-    - Hyphenated line breaks (e.g. 'ha-\\nreket' -> 'hareket')
-    - Weird PDF bullet points like 'Ø'
-    """
-    text = re.sub(r'-\n\s*', '', text)
-    text = re.sub(r'^\s*\d+\s*\n', '', text)
-    # Replace weird PDF bullet points with standard dash
-    text = text.replace('Ø', '-')
-    text = re.sub(r'\n+', ' ', text)
-    text = re.sub(r' {2,}', ' ', text)
-    return text.strip()
-
-
-def _build_context(retrieved_docs):
-    """
-    Filters chunks by distance, deduplicates, removes short chunks,
-    cleans text, caps total chars, and collects unique citation labels.
-    Returns (context_string, [citations]).
-    """
-    chunks = []
-    citations = []
-    seen_fingerprints = set()  # deduplication: first 80 cleaned chars as key
-    total_chars = 0
-
-    for row in retrieved_docs:
-        text, distance = row[0], row[1]
-        source_file = row[2] if len(row) > 2 else None
-        page_number = row[3] if len(row) > 3 else -1
-
-        if distance > MAX_DISTANCE:
-            continue
-
-        cleaned = _clean_chunk_text(text)
-        if not cleaned:
-            continue
-
-        # Skip very short chunks — likely headers, page numbers, or table fragments
-        if len(cleaned.split()) < MIN_USEFUL_WORDS:
-            continue
-
-        # Deduplication: skip if this chunk is nearly identical to an earlier one
-        fingerprint = cleaned[:80].lower()
-        if fingerprint in seen_fingerprints:
-            continue
-        seen_fingerprints.add(fingerprint)
-
-        if total_chars + len(cleaned) > MAX_CONTEXT_CHARS:
-            remaining = MAX_CONTEXT_CHARS - total_chars
-            if remaining > 100:
-                chunks.append(cleaned[:remaining])
-            break
-
-        chunks.append(cleaned)
-        total_chars += len(cleaned)
-
-        # Build citation label for this chunk
-        if source_file:
-            name = os.path.splitext(source_file)[0]
-            if len(name) > 45:
-                name = name[:45] + "..."
-            label = f"{name} (s.{page_number + 1})" if page_number >= 0 else name
-            if label not in citations:
-                citations.append(label)
-
-    return "\n\n".join(chunks), citations
-
-
-def answer_query(user_question, model, embeddings_model, db, chat_history, query_cache):
-    """
-    Expands short queries, resolves via cache, retrieves context, and streams
-    the LLM response token by token.
+    Full RAG pipeline:
+      0. Contextualise short follow-up questions using chat history
+      1. Expand 1-3 word queries with domain keywords
+      2. Resolve query to nearest canonical embedding (or fresh embed)
+      3. Retrieve top-k chunks from sqlite_vec
+      4. Quality gate: abort if best chunk is too distant
+      5. Build clean context string
+      6. Stream LLM response token by token
+      7. Strip <INVENTORY> blocks from output and persist them
 
     Returns: (response_text: str, was_streamed: bool)
-      - was_streamed=True  → tokens already printed inline; caller must not re-print
-      - was_streamed=False → caller should print the response (error / not-found)
+      was_streamed=True  -> tokens already printed; caller must NOT re-print
+      was_streamed=False -> caller should print the response (error / not-found)
     """
     print(f"\n[?] Question: {user_question}")
 
-    # 0. Contextualize follow-up questions
-    # If the user asks a short follow-up, prepend the last question for better retrieval
+    # 0. Contextualise follow-up questions (e.g. "peki aciksa?" -> prepend last question)
     search_query = user_question
     if chat_history and len(user_question.split()) < 6:
-        last_user_msg = next((msg["content"] for msg in reversed(chat_history) if msg["role"] == "user"), "")
+        last_user_msg = next(
+            (msg["content"] for msg in reversed(chat_history) if msg["role"] == "user"),
+            ""
+        )
         if last_user_msg:
             search_query = f"{last_user_msg} {user_question}"
             print(f"(*) Contextualized search query: '{search_query}'")
 
-    # 1. Expand short queries (1-3 words) before retrieval
-    expanded_query = _expand_short_query(search_query)
+    # 1. Query expansion
+    expanded_query = expand_query(search_query)
 
-    # 2. Resolve to canonical embedding if very close to a pre-cached query
+    # 2. Embedding resolution
     query_vector = _resolve_query(expanded_query, embeddings_model, query_cache)
 
-    # 3. Retrieve — pass pre-computed vector to skip redundant embedding
+    # 3. Retrieval
     print("(*) Searching local database for answers")
     retrieved_docs = retrieve_content(
         expanded_query, embeddings_model, db, k=3, query_vector=query_vector
@@ -327,7 +292,7 @@ def answer_query(user_question, model, embeddings_model, db, chat_history, query
     if not retrieved_docs:
         return "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının.", False
 
-    # 4. Show RAW results (truncated) for debugging
+    # 4. Debug: show raw results
     print("(*) Raw retrieval results:")
     for row in retrieved_docs:
         text, dist = row[0], row[1]
@@ -337,40 +302,23 @@ def answer_query(user_question, model, embeddings_model, db, chat_history, query
     if best_distance > QUALITY_GATE_DISTANCE:
         return "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının.", False
 
-    context_text, citations = _build_context(retrieved_docs)
+    # 5. Build context
+    context_text, citations = build_context(retrieved_docs)
 
     if not context_text:
         return "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının.", False
 
-    # 5. Show CLEANED context so we can verify what actually goes to the LLM
     cleaned_chunks = context_text.split("\n\n")
     print(f"(*) Cleaned context -> LLM ({len(context_text)} chars, {len(cleaned_chunks)} chunk(s)):")
     for i, ck in enumerate(cleaned_chunks, 1):
         print(f"    [Chunk {i}]: {ck[:120].strip()}")
 
-    system_prompt = f"""Sen 'Offline Kriz Asistanı'sın. Görevin internetsiz, afet ortamında hayat kurtarmak.
-
-KURALLAR:
-1. SADECE asagidaki <CONTEXT> icindeki bilgileri kullan. Yoksa: "Veritabanımda bu bilgi bulunmuyor." de.
-2. Turkce yaz. (Soru Ingilizce ise Ingilizce cevap ver.)
-3. Kisa yaz: madde listesi, uzun paragraf yok.
-4. Uyari, not, aciklama, takip sorusu veya ek yorum ekleme. Cevabın sonuna hicbir sey ekleme. "[Pesi]:", "Not:", "Sonraki adim:" gibi ekler yasak.
-5. Onceki konusmayi takip et; devam sorularinda baglami kullan.
-
-MODLAR:
-- Panik/Cocuk: Sakin, teskin edici ton. Psikolojik destek oncelikli.
-- Tibbi acil: Ilk adimi ver, ardindan Evet/Hayir sorusu sor (orn: "Bilinc acik mi?").
-- Rasyon: Verilen miktar ve kisi sayisiyla gunluk plan yap.
-
-<CONTEXT>
-{context_text}
-</CONTEXT>"""
-
+    # 6. Build prompt (injects user state if available)
+    system_prompt = _build_system_prompt(context_text, state_manager)
 
     print("(*) Generating answer from context")
     chat_client = model.get_chat_client()
 
-    # Build multi-turn message list: system → history → current question
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(chat_history)
     messages.append({"role": "user", "content": user_question})
@@ -382,7 +330,7 @@ MODLAR:
         print("Asistan:")
         print("=" * 50)
 
-        full_response = []
+        raw_tokens = []
         start_time = time.time()
 
         for chunk in stream:
@@ -394,30 +342,39 @@ MODLAR:
             delta = chunk.choices[0].delta.content
             if delta:
                 print(delta, end="", flush=True)
-                full_response.append(delta)
+                raw_tokens.append(delta)
 
         print()
+        raw_response = "".join(raw_tokens)
 
-        # Print source citations after the answer (programmatic, not hallucinated)
+        # Strip artifact annotations (Pesi:, Sonraki adim:, etc.) before storing in history
+        visible_response = clean_llm_response(raw_response)
+
         if citations:
             print("\n--- Kaynaklar ---")
             for c in citations:
-                print(f"  • {c}")
+                print(f"  * {c}")
 
-        return "".join(full_response), True
+        return visible_response, True
 
     except Exception as e:
         return f"[-] Generation failed: {e}", False
 
 
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
+
 if __name__ == "__main__":
-    offline_model, embeddings_model, db, query_cache = setup_system()
+    offline_model, embeddings_model, db, query_cache, state_manager = setup_system()
+
     print("\n" + "="*50)
-    print("-- Çevrim Dışı Kriz Asistanı (Offline Crisis Assistant)--")
-    print("Çıkmak için 'kapat', 'q', 'cikis', 'exit' yazın.")
+    print("-- Cevrim Disi Kriz Asistani (Offline Crisis Assistant)--")
+    print("Cikmak icin 'kapat', 'q', 'cikis', 'exit' yazin.")
+    print("Envanter icin: 'envanter', 'envanter ekle su 5 litre, pil 3', 'envanter sil su'")
+    print("Envanter silmek icin: 'envanter_sifirla'")
     print("="*50)
 
-    # Stores last MAX_HISTORY_TURNS turns as {"role": ..., "content": ...} dicts
     chat_history = []
 
     try:
@@ -431,22 +388,97 @@ if __name__ == "__main__":
             if not user_input.strip():
                 continue
 
+            # --- PRIORITY 1: Explicit envanter commands (always bypass RAG) ---
+            inv_cmd, inv_data = parse_explicit_inventory_command(user_input)
+
+            if inv_cmd == 'show':
+                inv_text = state_manager.get_readable_inventory()
+                print("\n" + "="*50)
+                print("Asistan:")
+                print("="*50)
+                print(inv_text)
+                chat_history.append({"role": "user", "content": user_input})
+                chat_history.append({"role": "assistant", "content": inv_text})
+                continue
+
+            elif inv_cmd == 'add':
+                state_manager.update_inventory_direct(inv_data)
+                items_str = ", ".join(f"{k}: {v}" for k, v in inv_data.items())
+                msg = f"Kaydedildi: {items_str}"
+                print("\n" + "="*50)
+                print("Asistan:")
+                print("="*50)
+                print(msg)
+                chat_history.append({"role": "user", "content": user_input})
+                chat_history.append({"role": "assistant", "content": msg})
+                continue
+
+            elif inv_cmd == 'delete':
+                state_manager.remove_inventory_direct(inv_data)
+                
+                parts = []
+                for k, v in inv_data.items():
+                    if str(v).upper() == 'ALL':
+                        parts.append(k)
+                    else:
+                        parts.append(f"{k} ({v} azaldi)")
+                        
+                msg = f"Silindi/Eksiltildi: {', '.join(parts)}"
+                print("\n" + "="*50)
+                print("Asistan:")
+                print("="*50)
+                print(msg)
+                chat_history.append({"role": "user", "content": user_input})
+                chat_history.append({"role": "assistant", "content": msg})
+                continue
+
+            # --- PRIORITY 2: envanter_sifirla ---
+            if user_input.lower() == 'envanter_sifirla':
+                state_manager.clear()
+                print("\n" + "="*50)
+                print("Asistan:")
+                print("="*50)
+                print("Envanter ve profil bilgisi silindi.")
+                continue
+
+            # --- PRIORITY 3: Best-effort free-form extraction (no question) ---
+            extracted = state_manager.try_extract_inventory(user_input)
+            if extracted:
+                state_manager.update_inventory_direct(extracted)
+                items_str = ", ".join(f"{k}: {v}" for k, v in extracted.items())
+                print(f"[+] Otomatik kaydedildi -> {items_str}")
+                has_question = '?' in user_input or any(
+                    w in user_input.lower() for w in
+                    ['nasil', 'nasil', 'ne kadar', 'ne yapmal', 'kac gun', 'kac gun',
+                     'ne zaman', 'neden', 'nereye', 'ne yapay', 'ne yapal']
+                )
+                if not has_question:
+                    msg = f"Tamam, kaydettim: {items_str}. Baska bir konuda yardim edebilir miyim?"
+                    print("\n" + "="*50)
+                    print("Asistan:")
+                    print("="*50)
+                    print(msg)
+                    chat_history.append({"role": "user", "content": user_input})
+                    chat_history.append({"role": "assistant", "content": msg})
+                    if len(chat_history) > MAX_HISTORY_TURNS * 2:
+                        chat_history = chat_history[-(MAX_HISTORY_TURNS * 2):]
+                    continue
+                # Has a question -> fall through to RAG with updated inventory context
+
             result, was_streamed = answer_query(
-                user_input, offline_model, embeddings_model, db, chat_history, query_cache
+                user_input, offline_model, embeddings_model, db,
+                chat_history, query_cache, state_manager
             )
 
-            # If not streamed inline, print now (error or not-found message)
             if result and not was_streamed:
                 print("\n" + "="*50)
                 print("Asistan:")
                 print("="*50)
                 print(result)
 
-            # Only successful LLM answers go into conversation history
             if was_streamed and result:
                 chat_history.append({"role": "user", "content": user_input})
                 chat_history.append({"role": "assistant", "content": result})
-                # Keep only the last MAX_HISTORY_TURNS turns (2 messages per turn)
                 if len(chat_history) > MAX_HISTORY_TURNS * 2:
                     chat_history = chat_history[-(MAX_HISTORY_TURNS * 2):]
 

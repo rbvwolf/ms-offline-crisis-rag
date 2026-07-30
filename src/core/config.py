@@ -7,6 +7,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 # --- Paths ---
 DB_PATH = os.path.join(PROJECT_ROOT, "db", "survival_knowledge.db")
 RAW_PDF_DIR = os.path.join(PROJECT_ROOT, "data", "raw_pdfs")
+USER_STATE_PATH = os.path.join(PROJECT_ROOT, "data", "user_state.json")
 
 # --- Embedding Model ---
 # Must stay in sync across ingestion, retrieval, and generation.
