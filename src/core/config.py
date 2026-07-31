@@ -24,6 +24,12 @@ MAX_DISTANCE = 0.85         # chunks beyond this distance are discarded from con
 QUALITY_GATE_DISTANCE = 0.85  # if even the best chunk exceeds this, return "not found"
 MIN_USEFUL_WORDS = 10       # cleaned chunks shorter than this are skipped (noise filter)
 
+# Hybrid search pool sizes (results before fusion)
+VECTOR_K = 10               # candidate chunks fetched from vector (sqlite-vec) search
+FTS_K = 10                  # candidate chunks fetched from FTS5 BM25 keyword search
+RRF_K = 60                  # Reciprocal Rank Fusion constant (higher = less rank bias)
+TOP_K = 5                   # final chunks passed to the LLM after fusion + distance filter
+
 # --- Generation ---
 MAX_CONTEXT_CHARS = 2500    # hard cap on total context sent to the LLM
 STREAM_TIMEOUT_SECONDS = 180  # hard time limit for streaming generation

@@ -6,14 +6,14 @@ Responsibilities:
   - Load the embedding model (once at startup)
   - Open a persistent DB connection for the session
   - Pre-embed canonical query cache
-  - answer_query(): retrieve -> build context -> stream LLM response
-  - Parse <INVENTORY> blocks emitted by the LLM and persist them via StateManager
-  - Main CLI loop
+  - answer_query(): retrieve (hybrid) -> build context -> stream LLM response
+  - Main CLI loop with inventory command routing
 
 Helper logic lives in dedicated modules:
   - query_processor.py  : keyword expansion, Turkish char normalization
   - context_builder.py  : chunk cleaning, deduplication, context assembly
   - state_manager.py    : persistent user inventory / situational profile
+  - retriever.py        : hybrid vector + FTS5 BM25 search, RRF fusion
 """
 
 import os
@@ -32,7 +32,7 @@ from core.config import (
     EMBEDDING_MODEL, MAX_CONTEXT_CHARS,
     MAX_DISTANCE, QUALITY_GATE_DISTANCE,
     STREAM_TIMEOUT_SECONDS, MAX_HISTORY_TURNS,
-    CACHE_HIT_THRESHOLD, MIN_USEFUL_WORDS
+    CACHE_HIT_THRESHOLD, MIN_USEFUL_WORDS, TOP_K
 )
 from retriever import open_db, retrieve_content
 from query_processor import expand_query
@@ -175,27 +175,69 @@ def _strip_inventory_blocks(text: str, state_manager: StateManager) -> str:
     return _INVENTORY_RE.sub(handle_match, text).strip()
 
 
-def _build_system_prompt(context_text: str, state_manager: StateManager) -> str:
+# Keywords that indicate the query is about rationing / supplies / evacuation planning.
+# ONLY inject the inventory state block when the query matches one of these.
+_INVENTORY_RELEVANT_KEYWORDS = {
+    # Explicit inventory/ration terms
+    'rasyon', 'rasyonum', 'rasyonlama', 'gunluk rasyon',
+    'yiyecek', 'yemek', 'gida', 'atistirmalik',
+    'malzeme', 'malzemem', 'malzemeleri', 'malzemelerim',
+    'envanter', 'envanterim', 'stok', 'stoklarim',
+    # Supply-scoped queries
+    'elimde ne', 'elimde var', 'elimde neler',
+    'yanimda ne', 'bende ne', 'ne kadar var',
+    'kac gun', 'kac gunluk', 'ne kadar surer',
+    # Planning / rationing context
+    'ne ile idare', 'nasil idare', 'idare eder miyim',
+    'tahliye hazirlik', 'hazirlik',
+    'ne ile beslenir', 'nasil beslenir',
+}
+
+
+def _is_inventory_relevant(query: str) -> bool:
     """
-    Assembles the system prompt.  If the user has a saved inventory/profile,
-    it is injected BEFORE the RAG context so the model can use both.
+    Returns True only when the query is explicitly about rationing,
+    supplies, or evacuation planning.
+    This prevents inventory items from leaking into unrelated answers
+    (e.g. Morse code questions getting answered with inventory items).
     """
-    state_block = state_manager.get_context_block()
-    state_section = f"\n{state_block}\n" if state_block else ""
+    from query_processor import normalize_for_matching
+    norm = normalize_for_matching(query.lower())
+    return any(kw in norm for kw in _INVENTORY_RELEVANT_KEYWORDS)
+
+
+def _build_system_prompt(context_text: str, state_manager: StateManager,
+                         inject_inventory: bool = False) -> str:
+    """
+    Assembles the system prompt.
+    The inventory/profile state block is ONLY injected when inject_inventory=True
+    (i.e. the query is about rationing or supplies).  For all other queries the
+    state block is omitted so the model cannot hallucinate answers from inventory
+    items (e.g. mapping 'biskuvi' to a Morse letter).
+    """
+    state_section = ""
+    if inject_inventory:
+        state_block = state_manager.get_context_block()
+        if state_block:
+            state_section = f"\n{state_block}\n"
 
     system_prompt = f"""Sen 'Offline Kriz Asistani'sin. Gorev: internetsiz, afet ortaminda hayat kurtarmak.
 {state_section}
-KURALLAR:
-1. SADECE asagidaki <CONTEXT> icindeki bilgileri kullan. Yoksa: "Veritabanımda bu bilgi bulunmuyor." de.
+KURALLAR (KESINLIKLE UYULMASI ZORUNLU):
+1. SADECE asagidaki <CONTEXT> icindeki bilgileri kullan.
+   Context yetersizse veya alakasizsa: "Veritabanim bu konuda bilgi icermiyor." de. UYDURMA.
 2. Turkce yaz. (Soru Ingilizce ise Ingilizce cevap ver.)
-3. Kisa yaz: madde listesi, uzun paragraf yok.
-4. Uyari, not, aciklama, takip sorusu veya ek yorum ekleme. Cevabın sonuna kesinlikle hicbir sey ekleme.
-5. Onceki konusmayi takip et; devam sorularinda baglami kullan.
-6. Rasyon hesabinda <KULLANICI_DURUMU> blokundaki envanter miktarlarini kullan; yoksa kullanicidan sor.
+3. KISA yaz: maksimum 5 madde, her madde 1 cumle. Toplam 80-120 kelimeyi gecme.
+4. Numarali veya tire ile madde listesi kullan. Paragraf YAZMA.
+5. Ayni bilgiyi tekrarlama. Her madde farkli bir bilgi vermeli.
+6. Cevabinin sonuna hicbir sey ekleme: not, uyari, aciklama, soru, yorum YOK.
+7. Onceki konusmayi takip et; devam sorularinda baglami kullan.
+8. <KULLANICI_DURUMU> blogu SADECE rasyon/stok/malzeme sorgularinda verilir.
+   Bu blok yoksa envanter bilgisini KULLANMA, UYDURMA.
 
 MODLAR:
 - Panik/Cocuk: Sakin, teskin edici ton. Psikolojik destek oncelikli.
-- Tibbi acil: Ilk adimi ver, ardindan Evet/Hayir sorusu sor (orn: "Bilinc acik mi?").
+- Tibbi acil: Ilk adimi ver, ardindan tek bir Evet/Hayir sorusu sor.
 - Rasyon: Eldeki malzemeyle gunluk plan yap.
 
 <CONTEXT>
@@ -266,14 +308,29 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
     """
     print(f"\n[?] Question: {user_question}")
 
-    # 0. Contextualise follow-up questions (e.g. "peki aciksa?" -> prepend last question)
+    # 0. Contextualise genuine follow-up questions.
+    # Only prepend when the current message STARTS WITH a connector word AND
+    # the previous user message was NOT an inventory command.
+    # This prevents 'mors alfabesi' being merged with 'envanter ekle su 2 litre'.
     search_query = user_question
-    if chat_history and len(user_question.split()) < 6:
+    _FOLLOWUP_STARTERS = {
+        'peki', 'ya', 'acaba', 'ya da', 'yoksa', 'bunu', 'evet',
+        'hayir', 'hayır', 'tamam', 'anladim', 'simdi', 'sonra',
+        'o zaman', 'neden', 'nerede',
+    }
+    first_word = user_question.strip().split()[0].lower() if user_question.strip() else ''
+    is_followup = (
+        chat_history
+        and len(user_question.split()) < 5
+        and first_word in _FOLLOWUP_STARTERS
+    )
+    if is_followup:
         last_user_msg = next(
             (msg["content"] for msg in reversed(chat_history) if msg["role"] == "user"),
             ""
         )
-        if last_user_msg:
+        # Don't contextualize with inventory commands — they'd corrupt the query
+        if last_user_msg and not last_user_msg.lower().startswith('envanter'):
             search_query = f"{last_user_msg} {user_question}"
             print(f"(*) Contextualized search query: '{search_query}'")
 
@@ -283,20 +340,14 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
     # 2. Embedding resolution
     query_vector = _resolve_query(expanded_query, embeddings_model, query_cache)
 
-    # 3. Retrieval
+    # 3. Hybrid retrieval (vector KNN + FTS5 BM25 -> RRF fusion)
     print("(*) Searching local database for answers")
     retrieved_docs = retrieve_content(
-        expanded_query, embeddings_model, db, k=3, query_vector=query_vector
+        expanded_query, embeddings_model, db, k=TOP_K, query_vector=query_vector
     )
 
     if not retrieved_docs:
         return "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının.", False
-
-    # 4. Debug: show raw results
-    print("(*) Raw retrieval results:")
-    for row in retrieved_docs:
-        text, dist = row[0], row[1]
-        print(f"    dist={dist:.4f} | {text[:60].strip()!r}")
 
     best_distance = retrieved_docs[0][1]
     if best_distance > QUALITY_GATE_DISTANCE:
@@ -313,8 +364,11 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
     for i, ck in enumerate(cleaned_chunks, 1):
         print(f"    [Chunk {i}]: {ck[:120].strip()}")
 
-    # 6. Build prompt (injects user state if available)
-    system_prompt = _build_system_prompt(context_text, state_manager)
+    # 6. Build prompt — inject inventory ONLY for ration/supply related queries
+    inject_inv = _is_inventory_relevant(user_question)
+    if inject_inv:
+        print("(*) Inventory state injected into prompt (ration/supply query)")
+    system_prompt = _build_system_prompt(context_text, state_manager, inject_inventory=inject_inv)
 
     print("(*) Generating answer from context")
     chat_client = model.get_chat_client()
@@ -397,8 +451,10 @@ if __name__ == "__main__":
                 print("Asistan:")
                 print("="*50)
                 print(inv_text)
+                # Store a NEUTRAL message in history so subsequent RAG queries
+                # don't see the full item list and get confused by it.
                 chat_history.append({"role": "user", "content": user_input})
-                chat_history.append({"role": "assistant", "content": inv_text})
+                chat_history.append({"role": "assistant", "content": "[Envanter gosterildi]"})
                 continue
 
             elif inv_cmd == 'add':

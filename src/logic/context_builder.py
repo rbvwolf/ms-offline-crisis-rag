@@ -1,19 +1,13 @@
-"""
-context_builder.py — Chunk cleaning, deduplication, and context assembly.
-
-Extracted from generator.py to keep that file focused on LLM orchestration.
-
-Public API:
-    context_text, citations = build_context(retrieved_docs)
-"""
-
 import os
 import re
 
-# We rely on config constants; import path is set by generator.py before this module loads.
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from core.config import MAX_DISTANCE, MAX_CONTEXT_CHARS, MIN_USEFUL_WORDS
+
+# Maximum allowed distance spread from the best chunk.
+# E.g. if best chunk is 0.78, no chunk worse than 0.78+0.10 = 0.88 is used.
+_MAX_RELATIVE_DISTANCE = 0.10
 
 
 def clean_chunk_text(text: str) -> str:
@@ -39,12 +33,20 @@ def build_context(retrieved_docs: list) -> tuple[str, list]:
       - citations: unique source labels for display after the answer
 
     Filters applied in order:
-      1. Distance threshold (MAX_DISTANCE)
-      2. Empty / unparseable chunks
-      3. Minimum useful word count (MIN_USEFUL_WORDS)
-      4. Fingerprint-based deduplication (first 80 chars)
-      5. MAX_CONTEXT_CHARS hard cap
+      1. Absolute distance threshold (MAX_DISTANCE)
+      2. Relative distance: no chunk more than _MAX_RELATIVE_DISTANCE worse than best
+      3. Empty / unparseable chunks
+      4. Minimum useful word count (MIN_USEFUL_WORDS)
+      5. Fingerprint-based deduplication (first 80 chars)
+      6. MAX_CONTEXT_CHARS hard cap
     """
+    if not retrieved_docs:
+        return "", []
+
+    # Determine best (lowest) distance to set relative filter
+    best_distance = min(row[1] for row in retrieved_docs)
+    relative_cap = best_distance + _MAX_RELATIVE_DISTANCE
+
     chunks = []
     citations = []
     seen_fingerprints: set = set()
@@ -55,7 +57,12 @@ def build_context(retrieved_docs: list) -> tuple[str, list]:
         source_file = row[2] if len(row) > 2 else None
         page_number = row[3] if len(row) > 3 else -1
 
+        # Absolute gate
         if distance > MAX_DISTANCE:
+            continue
+
+        # Relative gate: skip chunks that are much further than the best hit
+        if distance > relative_cap:
             continue
 
         cleaned = clean_chunk_text(text)

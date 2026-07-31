@@ -91,7 +91,13 @@ def ingest_pdfs_to_sqlite():
     print(f"(*) Found {len(new_documents)} pages of document. Chunking...")
 
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+        # Turkish-aware separators: prefer splitting on paragraph breaks first,
+        # then list/bullet markers, then sentence endings, then words.
+        # This keeps list items and sentences intact instead of cutting mid-word.
+        separators=["\n\n", "\n- ", "\n* ", "\n", ". ", "! ", "? ", " ", ""],
+        is_separator_regex=False,
     )
     raw_chunks = text_splitter.split_documents(new_documents)
     print(f"(*) Documents split into {len(raw_chunks)} raw pieces.")
@@ -124,12 +130,22 @@ def ingest_pdfs_to_sqlite():
     sqlite_vec.load(db)
     db.enable_load_extension(False)
 
-    # vector size of paraphrase-multilingual-MiniLM-L12-v2 is 384
+    # Vector table (sqlite-vec)
     db.execute("""
         CREATE VIRTUAL TABLE IF NOT EXISTS survival_vectors USING vec0(
             chunk_id INTEGER PRIMARY KEY,
             text TEXT,
             embedding float[384]
+        );
+    """)
+
+    # FTS5 full-text search table for BM25 keyword matching.
+    # chunk_id is UNINDEXED (stored but not tokenised) so FTS can join back.
+    db.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+            text,
+            chunk_id UNINDEXED,
+            tokenize = 'unicode61 remove_diacritics 2'
         );
     """)
 
@@ -143,6 +159,11 @@ def ingest_pdfs_to_sqlite():
         cursor.execute(
             "INSERT INTO chunks_metadata(chunk_id, source_file, page_number) VALUES (?, ?, ?)",
             (chunk_id, source_file, page_number)
+        )
+        # Mirror the same text into FTS5 for BM25 keyword search
+        cursor.execute(
+            "INSERT INTO chunks_fts(text, chunk_id) VALUES (?, ?)",
+            (text, chunk_id)
         )
 
     for filename in new_filenames:

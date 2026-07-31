@@ -263,16 +263,35 @@ class StateManager:
     def update_inventory_direct(self, items: dict):
         """
         Merge pre-parsed items into the inventory and persist to disk.
+        If the item already exists with a numeric quantity, ADD to it.
         Items with value '0', 'sifir', or 'tukendi' are removed.
-        Called by Python-level extraction — no LLM involvement.
+        Called by Python-level extraction -- no LLM involvement.
         """
         for key, val in items.items():
             key = str(key).strip().lower()
             val_str = str(val).strip()
-            if val_str.lower() in ('0', 'sifir', 'tukendi', 'tukendi', ''):
+
+            if val_str.lower() in ('0', 'sifir', 'tukendi', ''):
                 self._state['inventory'].pop(key, None)
-            else:
-                self._state['inventory'][key] = val_str
+                continue
+
+            existing = self._state['inventory'].get(key)
+            if existing:
+                # Try to add numerically if both have parseable numbers
+                m_new = re.match(r'^(\d+[\.,]?\d*)\s*(.*)$', val_str, re.IGNORECASE)
+                m_ex  = re.match(r'^(\d+[\.,]?\d*)\s*(.*)$', existing,  re.IGNORECASE)
+                if m_new and m_ex:
+                    new_num = float(m_new.group(1).replace(',', '.'))
+                    ex_num  = float(m_ex.group(1).replace(',', '.'))
+                    # Use the new value's unit; fall back to existing unit if new has none
+                    unit = m_new.group(2).strip() or m_ex.group(2).strip()
+                    total = ex_num + new_num
+                    total_str = f"{total:g}"
+                    self._state['inventory'][key] = f"{total_str} {unit}".strip()
+                    continue
+            # No existing entry or non-numeric: just set
+            self._state['inventory'][key] = val_str
+
         self._save()
         print(f"(*) Inventory saved: {self._state['inventory']}")
 

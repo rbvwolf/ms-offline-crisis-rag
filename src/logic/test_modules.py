@@ -29,6 +29,16 @@ fake_docs = [
 ctx, cits = build_context(fake_docs)
 chunk_count = len([c for c in ctx.split('\n\n') if c.strip()])
 assert chunk_count == 1, f'expected 1 chunk after dedup+short filter, got {chunk_count}'
+
+# Relative distance filter: chunk at dist 0.87 should be excluded when best is 0.75 (cap=0.85)
+long_text = 'Bu cumle on kelimeden fazla iceriyor ve filtreden gecmeli direktion taraf. ' * 2
+far_docs = [
+    (long_text, 0.75, 'a.pdf', 1),
+    (long_text + ' farkli icerik ekstra kelimeler', 0.87, 'b.pdf', 2),  # 0.87 > 0.75+0.10=0.85, excluded
+]
+ctx2, _ = build_context(far_docs)
+chunk2_count = len([c for c in ctx2.split('\n\n') if c.strip()])
+assert chunk2_count == 1, f'relative filter: expected 1 chunk, got {chunk2_count}'
 print('[+] context_builder OK')
 
 # ------------------------------------------------------------------
