@@ -55,7 +55,8 @@ def ingest_pdfs_to_sqlite():
         CREATE TABLE IF NOT EXISTS chunks_metadata (
             chunk_id INTEGER PRIMARY KEY,
             source_file TEXT,
-            page_number INTEGER
+            page_number INTEGER,
+            source_type TEXT DEFAULT 'pdf'
         )
     """)
     db.commit()

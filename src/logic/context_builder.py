@@ -7,7 +7,7 @@ from core.config import MAX_DISTANCE, MAX_CONTEXT_CHARS, MIN_USEFUL_WORDS
 
 # Maximum allowed distance spread from the best chunk.
 # E.g. if best chunk is 0.78, no chunk worse than 0.78+0.10 = 0.88 is used.
-_MAX_RELATIVE_DISTANCE = 0.10
+_MAX_RELATIVE_DISTANCE = 0.12  # strict relative distance filter to prevent noise chunks
 
 
 def clean_chunk_text(text: str) -> str:
@@ -56,14 +56,18 @@ def build_context(retrieved_docs: list) -> tuple[str, list]:
         text, distance = row[0], row[1]
         source_file = row[2] if len(row) > 2 else None
         page_number = row[3] if len(row) > 3 else -1
+        source_type = row[4] if len(row) > 4 else 'pdf'
 
         # Absolute gate
         if distance > MAX_DISTANCE:
             continue
 
         # Relative gate: skip chunks that are much further than the best hit
-        if distance > relative_cap:
+        # We exempt TXT chunks from this gate because they are hand-curated
+        # priority knowledge and should not be dropped just because a PDF scored better.
+        if source_type != 'txt' and distance > relative_cap:
             continue
+
 
         cleaned = clean_chunk_text(text)
         if not cleaned:
@@ -89,12 +93,22 @@ def build_context(retrieved_docs: list) -> tuple[str, list]:
         chunks.append(cleaned)
         total_chars += len(cleaned)
 
-        # Citation label
+        # Citation label — always shown for both TXT and PDF sources
         if source_file:
             name = os.path.splitext(source_file)[0]
             if len(name) > 45:
                 name = name[:45] + "..."
-            label = f"{name} (s.{page_number + 1})" if page_number >= 0 else name
+            if source_type == 'txt':
+                label = f"[TXT] {name}"
+            elif page_number >= 0:
+                label = f"[PDF] {name} (s.{page_number + 1})"
+            else:
+                label = f"[PDF] {name}"
+            if label not in citations:
+                citations.append(label)
+        elif source_type == 'pdf':
+            # PDF chunk without a recorded filename — still note it as a PDF source
+            label = "[PDF] Bilinmeyen kaynak"
             if label not in citations:
                 citations.append(label)
 

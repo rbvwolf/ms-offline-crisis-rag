@@ -8,6 +8,8 @@ __pycache__/
 *.pyd
 .pytest_cache/
 
+*.db
+*.sqlite
 db/*.db
 db/*.sqlite
 data/processed/
@@ -24,3 +26,5 @@ data/processed/
 Thumbs.db
 
 /venv-bozuk
+scratch/
+.gemini/

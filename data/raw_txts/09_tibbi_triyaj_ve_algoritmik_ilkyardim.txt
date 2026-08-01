@@ -1,0 +1,18 @@
+ACİL DURUM TIBBİ TRİYAJ VE İLK YARDIM ALGORİTMASI
+
+START TRİYAJ SİSTEMİ (RENK KODLARI):
+- Kırmızı (Çok Acil): Solunum sıkıntısı olan, şuuru kapalı veya kontrol edilemeyen aşırı kanaması olan hastalar. İlk müdahale bu gruba yapılır.
+- Sarı (Acil / Geciktirilebilir): Solunumu ve nabzı normal olan ancak açık kırıkları, derin kesikleri veya ciddi yanıkları olan, yürüyemeyen hastalar.
+- Yeşil (Hafif Yaralı): Yürüyebilen, hafif sıyrıkları veya küçük kanamaları olan hastalar.
+- Siyah (Ex/Ölü): Nefes almayan, kalp atışı olmayan ve temel yaşam desteğine yanıt vermeyenler. Kaynaklar kısıtlıysa siyah koda müdahale edilmez.
+
+KANAMA KONTROLÜ VE TURNİKE:
+- Kanayan bölgenin üzerine temiz bir bezle kuvvetlice baskı uygulayın (tampon).
+- Kanama durmuyorsa ve bez kanla dolduysa, ilk bezi kaldırmadan üzerine ikinci bir bez koyarak baskıya devam edin.
+- Kanama kolda veya bacaktaysa ve baskıyla durdurulamayacak kadar fışkırır tarzdaysa (arter kanaması) TURNİKE uygulayın.
+- Turnike, kanama yerinin 5-8 cm üstüne (kalbe yakın tarafa) geniş bir bez veya kravatla sıkıca bağlanır. Turnikenin bağlandığı saat mutlaka not edilmeli ve her 20 dakikada bir 10 saniye gevşetilerek dokuya kan gitmesi sağlanmalıdır.
+
+KIRIK, ÇIKIK VE BURKULMALAR:
+- Kırık şüphesi olan bölgeyi kesinlikle hareket ettirmeyin veya düzeltmeye çalışmayın.
+- Kırık bölgesini, bulunduğu pozisyonda tahta, sert karton veya yastık gibi malzemelerle (atel) sabitleyin.
+- Açık kırıksa (kemik deriden çıkmışsa), kemiği içeri itmeye çalışmayın; üzerini temiz bir bezle hafifçe örtün.

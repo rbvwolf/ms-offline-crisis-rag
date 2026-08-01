@@ -32,6 +32,7 @@ from core.config import (
     EMBEDDING_MODEL, MAX_CONTEXT_CHARS,
     MAX_DISTANCE, QUALITY_GATE_DISTANCE,
     STREAM_TIMEOUT_SECONDS, MAX_HISTORY_TURNS,
+    MAX_GENERATION_TOKENS,
     CACHE_HIT_THRESHOLD, MIN_USEFUL_WORDS, TOP_K
 )
 from retriever import open_db, retrieve_content
@@ -207,13 +208,11 @@ def _is_inventory_relevant(query: str) -> bool:
 
 
 def _build_system_prompt(context_text: str, state_manager: StateManager,
-                         inject_inventory: bool = False) -> str:
+                         inject_inventory: bool = False,
+                         user_question: str = "") -> str:
     """
     Assembles the system prompt.
-    The inventory/profile state block is ONLY injected when inject_inventory=True
-    (i.e. the query is about rationing or supplies).  For all other queries the
-    state block is omitted so the model cannot hallucinate answers from inventory
-    items (e.g. mapping 'biskuvi' to a Morse letter).
+    The inventory/profile state block is ONLY injected when inject_inventory=True.
     """
     state_section = ""
     if inject_inventory:
@@ -221,28 +220,25 @@ def _build_system_prompt(context_text: str, state_manager: StateManager,
         if state_block:
             state_section = f"\n{state_block}\n"
 
-    system_prompt = f"""Sen 'Offline Kriz Asistani'sin. Gorev: internetsiz, afet ortaminda hayat kurtarmak.
+    inventory_rule = (
+        "- Kullanici envanterini yalnizca rasyon/stok sorgularinda kullan."
+        if inject_inventory and state_section
+        else ""
+    )
+
+    system_prompt = f"""Sen afet durumlarinda yardimci olan bir Kriz Asistanisin.
+Gorevin: BILGI KAYNAKLARI metinlerini kullanarak kullanicinin sorusuna anlasilir, kapsamli ve duzenli bir yanit sunmaktir.
 {state_section}
-KURALLAR (KESINLIKLE UYULMASI ZORUNLU):
-1. SADECE asagidaki <CONTEXT> icindeki bilgileri kullan.
-   Context yetersizse veya alakasizsa: "Veritabanim bu konuda bilgi icermiyor." de. UYDURMA.
-2. Turkce yaz. (Soru Ingilizce ise Ingilizce cevap ver.)
-3. KISA yaz: maksimum 5 madde, her madde 1 cumle. Toplam 80-120 kelimeyi gecme.
-4. Numarali veya tire ile madde listesi kullan. Paragraf YAZMA.
-5. Ayni bilgiyi tekrarlama. Her madde farkli bir bilgi vermeli.
-6. Cevabinin sonuna hicbir sey ekleme: not, uyari, aciklama, soru, yorum YOK.
-7. Onceki konusmayi takip et; devam sorularinda baglami kullan.
-8. <KULLANICI_DURUMU> blogu SADECE rasyon/stok/malzeme sorgularinda verilir.
-   Bu blok yoksa envanter bilgisini KULLANMA, UYDURMA.
+Yanit Formati ve Kurallar:
+- Giris: Sorulan konunun ne oldugunu, amacini ve genel kuralini 2-3 cumle ile acikla (Ornegin: Mors alfabesinin ne oldugunu, ne ise yaradigini, nokta ve cizgi mantigini acikla).
+- Maddeler: Ardindan kaynak metindeki tum onemli adimlari, kurallari veya harf kodlarini numaralandirilmis bir liste halinde sirala (1. 2. 3. 4. 5.).
+- Sadece BILGI KAYNAKLARI'ndaki gercek bilgileri kullan. Kendi zihninden sembol veya bilgi uydurma.
+- Sadece duz metin yaz. Yildiz (**) veya karmaşık markdown sembolleri kullanma.
+- Yanitinin en sonuna [BITTI] ekle.
+{inventory_rule}
 
-MODLAR:
-- Panik/Cocuk: Sakin, teskin edici ton. Psikolojik destek oncelikli.
-- Tibbi acil: Ilk adimi ver, ardindan tek bir Evet/Hayir sorusu sor.
-- Rasyon: Eldeki malzemeyle gunluk plan yap.
-
-<CONTEXT>
-{context_text}
-</CONTEXT>"""
+BILGI KAYNAKLARI:
+{context_text}"""
 
     return system_prompt
 
@@ -368,16 +364,26 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
     inject_inv = _is_inventory_relevant(user_question)
     if inject_inv:
         print("(*) Inventory state injected into prompt (ration/supply query)")
-    system_prompt = _build_system_prompt(context_text, state_manager, inject_inventory=inject_inv)
+    system_prompt = _build_system_prompt(
+        context_text, state_manager,
+        inject_inventory=inject_inv,
+        user_question=user_question
+    )
 
     print("(*) Generating answer from context")
     chat_client = model.get_chat_client()
 
     messages = [{"role": "system", "content": system_prompt}]
-    messages.extend(chat_history)
+    if is_followup:
+        # Only include user/assistant turns - never re-inject system messages from history
+        for msg in chat_history:
+            if msg.get("role") in ("user", "assistant") and msg.get("content", "").strip():
+                messages.append(msg)
     messages.append({"role": "user", "content": user_question})
 
     try:
+        # Note: Foundry Local ChatClient does not expose max_tokens as a kwarg.
+        # We enforce the output length via our programmatic token counter below.
         stream = chat_client.complete_streaming_chat(messages=messages)
 
         print("\n" + "=" * 50)
@@ -385,11 +391,15 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
         print("=" * 50)
 
         raw_tokens = []
+        token_count = 0
         start_time = time.time()
 
         for chunk in stream:
             if time.time() - start_time > STREAM_TIMEOUT_SECONDS:
-                print("\n[!] Generation limit reached.")
+                print("\n[!] Generation time limit reached.")
+                break
+            if token_count >= MAX_GENERATION_TOKENS:
+                print("\n[!] Token limit reached.")
                 break
             if not chunk.choices:
                 continue
@@ -397,12 +407,31 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
             if delta:
                 print(delta, end="", flush=True)
                 raw_tokens.append(delta)
+                # Approximate token count: Turkish subword tokens average ~2.5 chars
+                token_count += max(1, len(delta) // 3)
+
+                # Early stop: if model outputted the [BITTI] token, kill stream
+                last_chars = "".join(raw_tokens[-7:])
+                if "[BITTI]" in last_chars:
+                    print("\n[+] Answer completed.")
+                    break
 
         print()
         raw_response = "".join(raw_tokens)
 
-        # Strip artifact annotations (Pesi:, Sonraki adim:, etc.) before storing in history
+        if not raw_response.strip():
+            # Model returned empty output — can happen after [BITTI] cut-off
+            return "Bir sorun olustu, lutfen tekrar deneyin.", False
+
+        # Strip [BITTI] marker and artifact annotations before storing in history.
+        # IMPORTANT: [BITTI] must NOT remain in chat history because on the next turn
+        # the model sees it and may return an empty response ("must contain output text" error).
         visible_response = clean_llm_response(raw_response)
+        # clean_llm_response already strips [BITTI] via regex; also strip any inline occurrence
+        visible_response = re.sub(r'\[BITTI\].*', '', visible_response, flags=re.DOTALL).strip()
+
+        if not visible_response:
+            return "Bir sorun olustu, lutfen tekrar deneyin.", False
 
         if citations:
             print("\n--- Kaynaklar ---")

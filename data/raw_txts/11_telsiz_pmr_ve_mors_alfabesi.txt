@@ -1,0 +1,17 @@
+MORS ALFABESİ - TAM HARF VE SAYI KODLARI:
+- Kısa sinyal = Nokta (.), Uzun sinyal = Çizgi (-).
+- SOS acil çağrısı: ... --- ... (üç kısa, üç uzun, üç kısa)
+- A: .-    B: -...  C: -.-.  D: -..   E: .     F: ..-.
+- G: --.   H: ....  I: ..    J: .---  K: -.-   L: .-..
+- M: --    N: -.    O: ---   P: .--.  R: .-.   S: ...
+- T: -     U: ..-   V: ...-  W: .--   X: -..-  Y: -.--  Z: --..
+- 0: -----  1: .----  2: ..---  3: ...--  4: ....-
+- 5: .....  6: -....  7: --...  8: ---..  9: ----.
+- Harfler arası: 3 birim bekleme. Kelimeler arası: 7 birim bekleme.
+- K (-.-) ayrıca "Tamam / Anlaşıldı" sinyali olarak kullanılır.
+
+PMR TELSİZ KULLANIMI (LİSANSSIZ):
+- PMR 446 telsizler şebeke gerektirmeyen en güvenilir afet iletişim aracıdır.
+- Konuşmak için PTT mandalına bas, bitince hemen bırak.
+- Kanal 1 (446.00625 MHz): Türkiye acil durum ve arama kurtarma kanalı.
+- Batarya tasarrufu: cihazı saat başlarında 5 dakika aç, dinle, kapat.

@@ -7,6 +7,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 # --- Paths ---
 DB_PATH = os.path.join(PROJECT_ROOT, "db", "survival_knowledge.db")
 RAW_PDF_DIR = os.path.join(PROJECT_ROOT, "data", "raw_pdfs")
+RAW_TXT_DIR = os.path.join(PROJECT_ROOT, "data", "raw_txts")
 USER_STATE_PATH = os.path.join(PROJECT_ROOT, "data", "user_state.json")
 
 # --- Embedding Model ---
@@ -25,14 +26,15 @@ QUALITY_GATE_DISTANCE = 0.85  # if even the best chunk exceeds this, return "not
 MIN_USEFUL_WORDS = 10       # cleaned chunks shorter than this are skipped (noise filter)
 
 # Hybrid search pool sizes (results before fusion)
-VECTOR_K = 10               # candidate chunks fetched from vector (sqlite-vec) search
-FTS_K = 10                  # candidate chunks fetched from FTS5 BM25 keyword search
+VECTOR_K = 40               # candidate chunks fetched from vector (sqlite-vec) search
+FTS_K = 40                  # candidate chunks fetched from FTS5 BM25 keyword search
 RRF_K = 60                  # Reciprocal Rank Fusion constant (higher = less rank bias)
-TOP_K = 5                   # final chunks passed to the LLM after fusion + distance filter
+TOP_K = 6                  # final chunks passed to the LLM after fusion + distance filter
 
 # --- Generation ---
-MAX_CONTEXT_CHARS = 2500    # hard cap on total context sent to the LLM
-STREAM_TIMEOUT_SECONDS = 180  # hard time limit for streaming generation
+MAX_CONTEXT_CHARS = 2800    # concise cap on context sent to the LLM to prevent attention drift
+MAX_GENERATION_TOKENS = 600 # Accommodate user's request for examples which increases output length
+STREAM_TIMEOUT_SECONDS = 120 # CPU inference is slow; 120s gives phi-3.5 time to finish
 MAX_HISTORY_TURNS = 3       # number of back-and-forth conversation turns kept in memory
 
 # --- Query Cache ---

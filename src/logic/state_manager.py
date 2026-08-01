@@ -76,6 +76,7 @@ _ARTIFACT_PATTERNS = [
     re.compile(r'\n+(?:Not|Dikkat|Ozet|Özet|Note|Warning)\s*:.*$',
                re.IGNORECASE | re.MULTILINE),
     re.compile(r'<INVENTORY>.*?</INVENTORY>', re.DOTALL | re.IGNORECASE),
+    re.compile(r'\n*\[BITTI\].*$', re.DOTALL),
 ]
 
 
@@ -464,12 +465,55 @@ class StateManager:
         print('(*) User state cleared.')
 
 
+def deduplicate_paragraphs(text: str) -> str:
+    """
+    Removes near-duplicate paragraphs and sentences from LLM output (common in SLMs like Phi-3.5).
+    Compares word sets of each sentence to prune redundant repeats.
+    """
+    paragraphs = text.split('\n')
+    cleaned_paragraphs = []
+    seen_word_sets = []
+
+    for para in paragraphs:
+        stripped = para.strip()
+        if not stripped:
+            cleaned_paragraphs.append('')
+            continue
+
+        sentences = re.split(r'(?<=[.!?])\s+', stripped)
+        valid_sentences = []
+
+        for sent in sentences:
+            words = set(re.findall(r'\w+', sent.lower()))
+            if len(words) >= 4:
+                is_dup = False
+                for prev_words in seen_word_sets:
+                    intersection = len(words & prev_words)
+                    smaller_len = min(len(words), len(prev_words))
+                    if smaller_len > 0 and (intersection / smaller_len) >= 0.60:
+                        is_dup = True
+                        break
+                if is_dup:
+                    continue
+                seen_word_sets.append(words)
+            valid_sentences.append(sent)
+
+        if valid_sentences:
+            cleaned_paragraphs.append(' '.join(valid_sentences))
+
+    result = '\n'.join(cleaned_paragraphs)
+    return re.sub(r'\n{3,}', '\n\n', result).strip()
+
+
 def clean_llm_response(text: str) -> str:
     """
     Module-level helper used by generator.py.
-    Removes phi-3.5-mini artifact annotations from the LLM response.
+    Removes phi-3.5-mini artifact annotations, markdown bold asterisks,
+    and deduplicates repetitive paragraphs.
     Applied AFTER streaming completes, before storing in chat history.
     """
     for pattern in _ARTIFACT_PATTERNS:
         text = pattern.sub('', text)
+    text = text.replace('**', '')
+    text = deduplicate_paragraphs(text)
     return text.strip()

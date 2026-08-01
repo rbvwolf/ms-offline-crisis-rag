@@ -78,17 +78,25 @@ def open_db():
     sqlite_vec.load(db)
     db.enable_load_extension(False)
 
-    # Chunks metadata (citation source + page)
+    # Chunks metadata (citation source, page, source type for priority)
     db.execute("""
         CREATE TABLE IF NOT EXISTS chunks_metadata (
             chunk_id INTEGER PRIMARY KEY,
             source_file TEXT,
-            page_number INTEGER
+            page_number INTEGER,
+            source_type TEXT DEFAULT 'pdf'
         )
     """)
 
-    # FTS5 virtual table — created here so retriever works even when
-    # the DB was ingested with an older pdf_processor that lacked FTS5.
+    # Migration: add source_type column to existing databases that lack it
+    try:
+        db.execute("ALTER TABLE chunks_metadata ADD COLUMN source_type TEXT DEFAULT 'pdf'")
+        db.commit()
+        print("(*) Migrated chunks_metadata: added source_type column")
+    except Exception:
+        pass  # Column already exists
+
+    # FTS5 virtual table
     db.execute("""
         CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
             text,
@@ -104,6 +112,17 @@ def open_db():
         FROM survival_vectors sv
         WHERE NOT EXISTS (
             SELECT 1 FROM chunks_fts WHERE chunk_id = sv.chunk_id
+        )
+    """)
+
+    # Back-fill chunks_metadata for any chunks ingested before this feature.
+    # Gives them source_type='pdf' and NULL source_file as safe defaults.
+    db.execute("""
+        INSERT OR IGNORE INTO chunks_metadata(chunk_id, source_file, page_number, source_type)
+        SELECT sv.chunk_id, NULL, -1, 'pdf'
+        FROM survival_vectors sv
+        WHERE NOT EXISTS (
+            SELECT 1 FROM chunks_metadata cm WHERE cm.chunk_id = sv.chunk_id
         )
     """)
     db.commit()
@@ -212,27 +231,25 @@ def _reciprocal_rank_fusion(
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
 
-def _enrich_results(
-    fused: list[tuple[int, float]],
-    vector_dist_map: dict[int, float],
-    db,
-    top_k: int,
-    max_distance: float,
-) -> list[tuple[str, float, str | None, int]]:
+def _enrich_results(fused: list, vector_dist_map: dict, fts_results: list, db: sqlite3.Connection, top_k: int, max_distance: float) -> list:
     """
-    Fetches text + metadata for the top-k fused chunk IDs.
-    Filters out any chunks whose *vector* distance exceeds max_distance so
-    semantically irrelevant results (even if FTS5 matched a keyword) are dropped.
-    Returns [(text, distance, source_file, page_number), ...].
+    Fetches the actual text and metadata for the top RRF results.
+    Filters out results that are too far away in vector space (if purely vector match).
+    FTS-matched chunks bypass the distance gate — keyword matches are trusted.
+    Returns [(text, distance, source_file, page_number, source_type), ...].
     """
     cursor = db.cursor()
     results = []
+    # Build a set for O(1) FTS membership checks
+    fts_chunk_ids = {cid for cid, _ in fts_results}
 
-    for chunk_id, rrf_score in fused[:top_k * 2]:   # over-fetch, then filter
-        # Use vector distance as the quality signal (FTS5 has no distance)
+    for chunk_id, rrf_score in fused:
         vec_dist = vector_dist_map.get(chunk_id, max_distance)
+
         if vec_dist > max_distance:
-            continue
+            if chunk_id not in fts_chunk_ids:
+                continue  # purely vector match but too far — skip
+            vec_dist = max_distance  # cap distance for sorting purposes
 
         # Fetch text from vector table
         cursor.execute("SELECT text FROM survival_vectors WHERE chunk_id = ?", (chunk_id,))
@@ -241,20 +258,39 @@ def _enrich_results(
             continue
         text = row[0]
 
-        # Fetch citation metadata
+        # Fetch citation metadata including source_type
         cursor.execute(
-            "SELECT source_file, page_number FROM chunks_metadata WHERE chunk_id = ?",
+            "SELECT source_file, page_number, source_type FROM chunks_metadata WHERE chunk_id = ?",
             (chunk_id,)
         )
         meta = cursor.fetchone()
         source_file = meta[0] if meta else None
-        page_number = meta[1] if meta else -1
+        page_number  = meta[1] if meta else -1
+        source_type  = (meta[2] if meta else None) or 'pdf'
 
-        results.append((text, vec_dist, source_file, page_number))
-        if len(results) >= top_k:
-            break
+        results.append((text, vec_dist, source_file, page_number, source_type))
 
-    return results
+    # Separate TXT and PDF candidates
+    txt_results = [r for r in results if r[4] == 'txt']
+    pdf_results = [r for r in results if r[4] == 'pdf']
+
+    txt_results.sort(key=lambda r: r[1])
+    pdf_results.sort(key=lambda r: r[1])
+
+    final_results = []
+    # Take up to 3 TXT chunks first to give curated TXT knowledge priority
+    max_txt = min(3, len(txt_results)) if pdf_results else len(txt_results)
+    final_results.extend(txt_results[:max_txt])
+
+    # Fill remaining slots with top PDF chunks so PDFs are always synthesized & cited
+    remaining = top_k - len(final_results)
+    final_results.extend(pdf_results[:remaining])
+
+    # If extra slots remain, fill with any leftover TXT chunks
+    if len(final_results) < top_k and len(txt_results) > max_txt:
+        final_results.extend(txt_results[max_txt : max_txt + (top_k - len(final_results))])
+
+    return final_results
 
 
 def retrieve_content(
@@ -301,14 +337,16 @@ def retrieve_content(
     print(f"(*) RRF fused {len(fused)} unique candidates -> selecting top {k}")
 
     # --- 5. Enrich with text + metadata, apply distance gate ---
-    results = _enrich_results(fused, vector_dist_map, db, k, MAX_DISTANCE)
+    results = _enrich_results(fused, vector_dist_map, fts_results, db, k, MAX_DISTANCE)
     print(f"(*) Final results after distance gate: {len(results)}")
 
-    # Debug: show top results
-    for text, dist, src, pg in results:
+    # Debug: show top results with source_type
+    for row in results:
+        text, dist, src, pg, *rest = row
+        st = rest[0] if rest else 'pdf'
         label = f"{src}:p{pg}" if src else "?"
         snippet = text[:60].replace('\n', ' ')
-        print(f"    dist={dist:.4f} [{label}] | {snippet!r}")
+        print(f"    dist={dist:.4f} type={st} [{label}] | {snippet!r}")
 
     return results
 
