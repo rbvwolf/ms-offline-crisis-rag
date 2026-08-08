@@ -13,14 +13,25 @@ _MAX_RELATIVE_DISTANCE = 0.12  # strict relative distance filter to prevent nois
 def clean_chunk_text(text: str) -> str:
     """
     Strips PDF artifacts from a chunk before it is sent to the LLM:
-    - Hyphenated line breaks (e.g. 'ha-\\nreket' -> 'hareket')
-    - Leading page numbers like '35\\n' or '2 / 50\\n'
+    - Hyphenated line breaks (e.g. 'ha-\nreket' -> 'hareket')
+    - PDF font extraction spaces around Turkish diacritics ('a ğır' -> 'ağır', 'bulundu ğu' -> 'bulunduğu')
+    - Leading page numbers like '35\n' or '2 / 50\n'
     - Weird PDF bullet points (Ø, ● etc.)
     - Collapsed whitespace
     """
     text = re.sub(r'-\n\s*', '', text)
     text = re.sub(r'^\s*\d+\s*\n', '', text)
     text = text.replace('Ø', '-')
+
+    # Fix PDF font extraction spaces before/after Turkish diacritics
+    text = re.sub(r'(\b\w{1,8})\s+([ğşütıoöçĞŞÜTİÖÇ][a-zçğıöşü]*\b)', r'\1\2', text)
+    text = text.replace("bulundu ğu", "bulunduğu")
+    text = text.replace("a ğır", "ağır")
+    text = text.replace("çalı şma", "çalışma")
+    text = text.replace("Çalı şma", "Çalışma")
+    text = text.replace("ba şlığı", "başlığı")
+    text = text.replace("Şiddet Dağılım Yanı", "Şiddet Dağılışı")
+
     text = re.sub(r'\n+', ' ', text)
     text = re.sub(r' {2,}', ' ', text)
     return text.strip()

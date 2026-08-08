@@ -211,8 +211,7 @@ def _build_system_prompt(context_text: str, state_manager: StateManager,
                          inject_inventory: bool = False,
                          user_question: str = "") -> str:
     """
-    Assembles the system prompt.
-    The inventory/profile state block is ONLY injected when inject_inventory=True.
+    Assembles a compact, direct system prompt without template headers.
     """
     state_section = ""
     if inject_inventory:
@@ -226,15 +225,14 @@ def _build_system_prompt(context_text: str, state_manager: StateManager,
         else ""
     )
 
-    system_prompt = f"""Sen afet durumlarinda yardimci olan bir Kriz Asistanisin.
-Gorevin: BILGI KAYNAKLARI metinlerini kullanarak kullanicinin sorusuna anlasilir, kapsamli ve duzenli bir yanit sunmaktir.
+    system_prompt = f"""Sen afet durumlarinda yardimci olan uzman Kriz Asistanisin.
+Gorevin BILGI KAYNAKLARI metinlerini kullanarak kullanicinin sorusuna net, Türkçe, dogru ve duzenli bir yanit sunmaktir.
 {state_section}
-Yanit Formati ve Kurallar:
-- Giris: Sorulan konunun ne oldugunu, amacini ve genel kuralini 2-3 cumle ile acikla (Ornegin: Mors alfabesinin ne oldugunu, ne ise yaradigini, nokta ve cizgi mantigini acikla).
-- Maddeler: Ardindan kaynak metindeki tum onemli adimlari, kurallari veya harf kodlarini numaralandirilmis bir liste halinde sirala (1. 2. 3. 4. 5.).
-- Sadece BILGI KAYNAKLARI'ndaki gercek bilgileri kullan. Kendi zihninden sembol veya bilgi uydurma.
-- Sadece duz metin yaz. Yildiz (**) veya karmaşık markdown sembolleri kullanma.
-- Yanitinin en sonuna [BITTI] ekle.
+Kurallar:
+- Soruya dogrudan Türkçe yanit ver. "Yanit:", "Format:", "Maddeler:" gibi basliklar yazma.
+- Yalnizca BILGI KAYNAKLARI'ndaki gercek bilgileri kullan. Bilgi uydurma.
+- Mors Alfabesi soruldugunda; Mors alfabesinin ne oldugunu, acil durumlarda ses, isik veya dudukle nasil sinyal verildigini ve SOS (... --- ...) kuralini anlat. Tek basina anlamsiz cizgi noktalar dokme.
+- Yanitini temiz paragraf veya numarali liste halinde sun. Tekrara dusme.
 {inventory_rule}
 
 BILGI KAYNAKLARI:
@@ -442,6 +440,205 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
 
     except Exception as e:
         return f"[-] Generation failed: {e}", False
+
+
+def _safe_close_stream(stream):
+    """Safely closes an ONNX/Foundry streaming iterator to release C++ model lock immediately."""
+    if stream is None:
+        return
+    if hasattr(stream, 'close'):
+        try:
+            stream.close()
+        except Exception:
+            pass
+
+
+def answer_query_generator(
+    user_question: str,
+    model,
+    embeddings_model,
+    db,
+    chat_history: list = None,
+    query_cache: dict = None,
+    state_manager: StateManager = None
+):
+    """
+    Generator version of answer_query for Web SSE streaming.
+    Yields dictionary payloads:
+      {"type": "rag_docs", "docs": [...]}
+      {"type": "token", "token": "..."}
+      {"type": "done", "full_response": "..."}
+    """
+    if chat_history is None: chat_history = []
+    if query_cache is None: query_cache = {}
+    if state_manager is None: state_manager = StateManager()
+
+    print(f"\n[Web Sorgu]: {user_question}")
+
+    # --- PRIORITY 1: Explicit envanter commands (always bypass RAG & LLM) ---
+    inv_cmd, inv_data = parse_explicit_inventory_command(user_question)
+    if inv_cmd == 'show':
+        inv_text = state_manager.get_readable_inventory()
+        print(f"(*) Inventory show response generated directly:\n{inv_text}")
+        yield {"type": "rag_docs", "docs": []}
+        yield {"type": "token", "token": inv_text}
+        yield {"type": "done", "full_response": inv_text}
+        return
+    elif inv_cmd == 'add':
+        state_manager.update_inventory_direct(inv_data)
+        inv_text = state_manager.get_readable_inventory()
+        res_msg = f"Envanter güncellendi. Yeni envanteriniz:\n{inv_text}"
+        print(f"(*) Inventory add response generated directly:\n{res_msg}")
+        yield {"type": "rag_docs", "docs": []}
+        yield {"type": "token", "token": res_msg}
+        yield {"type": "done", "full_response": res_msg}
+        return
+    elif inv_cmd == 'delete':
+        state_manager.remove_inventory_direct(inv_data)
+        inv_text = state_manager.get_readable_inventory()
+        res_msg = f"Envanter güncellendi. Yeni envanteriniz:\n{inv_text}"
+        print(f"(*) Inventory delete response generated directly:\n{res_msg}")
+        yield {"type": "rag_docs", "docs": []}
+        yield {"type": "token", "token": res_msg}
+        yield {"type": "done", "full_response": res_msg}
+        return
+
+    # --- PRIORITY 2: Explicit inventory reset command ---
+    if user_question.strip().lower() in ('envanter_sifirla', 'envanteri_sifirla', 'envanter sifirla', 'envanteri sifirla'):
+        state_manager.clear()
+        res_msg = "Envanter sıfırlandı ve tüm kayıtlar silindi."
+        print(f"(*) Inventory reset response generated directly.")
+        yield {"type": "rag_docs", "docs": []}
+        yield {"type": "token", "token": res_msg}
+        yield {"type": "done", "full_response": res_msg}
+        return
+
+    # --- PRIORITY 3: Free-form inventory statements (no question mark) ---
+    has_question = '?' in user_question or any(
+        kw in user_question.lower()
+        for kw in ('nasil', 'neden', 'nerede', 'kac', 'hangisi', 'mi', 'mu', 'mou')
+    )
+    if not has_question:
+        extracted = state_manager.try_extract_inventory(user_question)
+        if extracted:
+            state_manager.update_inventory_direct(extracted)
+            inv_text = state_manager.get_readable_inventory()
+            res_msg = f"Envanterinize eklendi/güncellendi. Güncel envanteriniz:\n{inv_text}"
+            print(f"(*) Free-form inventory statement updated directly:\n{res_msg}")
+            yield {"type": "rag_docs", "docs": []}
+            yield {"type": "token", "token": res_msg}
+            yield {"type": "done", "full_response": res_msg}
+            return
+
+    # 1. Query expansion & resolution
+    search_query = user_question
+    expanded_query = expand_query(search_query)
+    query_vector = _resolve_query(expanded_query, embeddings_model, query_cache)
+
+    # 2. Hybrid retrieval
+    print("(*) Searching local database for answers")
+    retrieved_docs = retrieve_content(
+        expanded_query, embeddings_model, db, k=TOP_K, query_vector=query_vector
+    )
+
+    # Yield RAG debug metadata for web UI right sidebar
+    doc_payloads = []
+    for d in retrieved_docs:
+        text = d[0]
+        dist = float(d[1])
+        source_file = d[2] if len(d) > 2 and d[2] else "rehber.txt"
+        page = d[3] if len(d) > 3 else None
+        source_type = d[4] if len(d) > 4 else "txt"
+        doc_payloads.append({
+            "text": text,
+            "distance": dist,
+            "source_file": source_file,
+            "page": page,
+            "source_type": source_type,
+            "metadata": {"source": source_file, "page": page, "file_name": source_file}
+        })
+    yield {"type": "rag_docs", "docs": doc_payloads}
+
+    if not retrieved_docs:
+        msg = "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının."
+        yield {"type": "token", "token": msg}
+        yield {"type": "done", "full_response": msg}
+        return
+
+    best_distance = retrieved_docs[0][1]
+    if best_distance > QUALITY_GATE_DISTANCE:
+        msg = "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının."
+        yield {"type": "token", "token": msg}
+        yield {"type": "done", "full_response": msg}
+        return
+
+    # 3. Build context & prompt
+    context_text, citations = build_context(retrieved_docs)
+    if not context_text:
+        msg = "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının."
+        yield {"type": "token", "token": msg}
+        yield {"type": "done", "full_response": msg}
+        return
+
+    inject_inv = _is_inventory_relevant(user_question)
+    system_prompt = _build_system_prompt(
+        context_text, state_manager,
+        inject_inventory=inject_inv,
+        user_question=user_question
+    )
+
+    chat_client = model.get_chat_client()
+    messages = [{"role": "system", "content": system_prompt}]
+    
+    # Include history turns
+    if chat_history:
+        for msg in chat_history[-MAX_HISTORY_TURNS:]:
+            if msg.get("role") in ("user", "assistant") and msg.get("content", "").strip():
+                messages.append(msg)
+    messages.append({"role": "user", "content": user_question})
+
+    try:
+        stream = chat_client.complete_streaming_chat(messages=messages)
+        raw_tokens = []
+        token_count = 0
+        start_time = time.time()
+
+        try:
+            for chunk in stream:
+                if time.time() - start_time > STREAM_TIMEOUT_SECONDS:
+                    break
+                if token_count >= MAX_GENERATION_TOKENS:
+                    break
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    if '[BITTI]' in delta or 'Yanıt Formatı' in delta or 'Şimdi Yanı' in delta:
+                        break
+                    print(delta, end="", flush=True)
+                    raw_tokens.append(delta)
+                    token_count += max(1, len(delta) // 3)
+
+                    last_chars = "".join(raw_tokens[-12:])
+                    if "[BITTI]" in last_chars or "Şimdi Yanı" in last_chars or "Yanıt Formatı" in last_chars:
+                        break
+
+                    yield {"type": "token", "token": delta}
+        finally:
+            _safe_close_stream(stream)
+
+        print()
+        raw_response = "".join(raw_tokens)
+        visible_response = clean_llm_response(raw_response)
+        visible_response = re.sub(r'\[BITTI\].*', '', visible_response, flags=re.DOTALL).strip()
+        yield {"type": "done", "full_response": visible_response}
+
+    except Exception as e:
+        err_msg = f"[-] Generation failed: {e}"
+        print(err_msg)
+        yield {"type": "token", "token": err_msg}
+        yield {"type": "done", "full_response": err_msg}
+
 
 
 # ---------------------------------------------------------------------------

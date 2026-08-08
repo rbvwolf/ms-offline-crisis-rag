@@ -26,5 +26,5 @@ data/processed/
 Thumbs.db
 
 /venv-bozuk
-scratch/
+/scratch
 .gemini/

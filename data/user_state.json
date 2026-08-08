@@ -1,9 +1,10 @@
 {
   "inventory": {
-    "meyve suyu": "1 litre",
+    "meyve suyu": "2 litre",
     "yara bandi": "1 adet",
-    "buskuvi": "4 tane",
-    "su": "5 litre"
+    "buskuvi": "2 tane",
+    "su": "5 litre",
+    "ekmek": "1 adet"
   },
   "profile": {}
 }

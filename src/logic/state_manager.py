@@ -505,15 +505,29 @@ def deduplicate_paragraphs(text: str) -> str:
     return re.sub(r'\n{3,}', '\n\n', result).strip()
 
 
+def fix_turkish_pdf_spacing(text: str) -> str:
+    """Fixes PDF extraction artifacts where spaces are inserted before/after Turkish diacritics."""
+    text = re.sub(r'(\b\w{1,8})\s+([ğşütıoöçĞŞÜTİÖÇ][a-zçğıöşü]*\b)', r'\1\2', text)
+    text = text.replace("bulundu ğu", "bulunduğu")
+    text = text.replace("a ğır", "ağır")
+    text = text.replace("Çalı şma", "Çalışma")
+    text = text.replace("Şiddet Dağılım Yanı", "Şiddet Dağılışı")
+    text = text.replace("Şimdi Yanı", "")
+    text = text.replace("Yanıt Formatı ve Kurallı:", "")
+    text = text.replace("Mors alfabesi veya sinyal soruları:", "")
+    return text
+
+
 def clean_llm_response(text: str) -> str:
     """
     Module-level helper used by generator.py.
     Removes phi-3.5-mini artifact annotations, markdown bold asterisks,
-    and deduplicates repetitive paragraphs.
+    fixes PDF diacritic spacing, and deduplicates repetitive paragraphs.
     Applied AFTER streaming completes, before storing in chat history.
     """
     for pattern in _ARTIFACT_PATTERNS:
         text = pattern.sub('', text)
     text = text.replace('**', '')
+    text = fix_turkish_pdf_spacing(text)
     text = deduplicate_paragraphs(text)
     return text.strip()

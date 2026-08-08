@@ -1,0 +1,177 @@
+/* =====================================================================
+   Crisis RAG — CSS Custom Properties (Theme Variables)
+   3 MOD:
+   [data-mode="dark"]   → Koyu Modern UI (default, Zinc/Material Design 3)
+   [data-mode="light"]  → Açık Modern UI (beyaz/indigo)
+   [data-mode="cli"]    → OLED Güç Tasarrufu CLI (saf siyah / fosfor yeşili)
+   ===================================================================== */
+
+/* ----- DARK MODERN (default) ----- */
+:root,
+[data-mode="dark"] {
+  --bg-canvas:           #13131b;
+  --bg-surface:          #13131b;
+  --bg-sidebar-l:        #1b1b23;
+  --bg-sidebar-r:        #0d0d15;
+  --bg-card:             #1f1f27;
+  --bg-card-high:        #292932;
+  --bg-input:            #18181b;
+  --bg-chip:             #27272a;
+  --bg-user-bubble:      #27272a;
+
+  --border-main:         #464554;
+  --border-card:         #3f3f46;
+
+  --text-primary:        #e4e1ed;
+  --text-secondary:      #c7c4d7;
+  --text-accent:         #c0c1ff;   /* indigo/primary */
+  --text-accent-2:       #4edea3;   /* emerald/secondary — LLM active */
+  --text-accent-3:       #ffb783;   /* amber/tertiary — RAG panel */
+  --text-warning:        #f59e0b;
+  --text-danger:         #ef4444;
+  --text-muted:          #908fa0;
+
+  --accent-primary:      #c0c1ff;
+  --accent-secondary:    #4edea3;
+  --accent-tertiary:     #ffb783;
+  --accent-red:          #ef4444;
+  --accent-amber:        #f59e0b;
+
+  --scrollbar-thumb:     #3f3f46;
+
+  --font-sans:           'Inter', 'Plus Jakarta Sans', sans-serif;
+  --font-mono:           'JetBrains Mono', monospace;
+
+  /* Mod-specific overrides */
+  --rounded-card:        0.75rem;
+  --rounded-bubble:      1rem;
+  --rounded-chip:        9999px;
+  --rounded-input:       0.75rem;
+  --shadow-card:         0 1px 3px rgba(0,0,0,0.4);
+}
+
+/* ----- LIGHT MODERN ----- */
+[data-mode="light"] {
+  --bg-canvas:           #F8F9FA;
+  --bg-surface:          #F8F9FA;
+  --bg-sidebar-l:        #ffffff;
+  --bg-sidebar-r:        #ffffff;
+  --bg-card:             #ffffff;
+  --bg-card-high:        #f3f4f6;
+  --bg-input:            #ffffff;
+  --bg-chip:             #ffffff;
+  --bg-user-bubble:      #eef2ff; /* indigo-50 */
+
+  --border-main:         #e5e7eb;
+  --border-card:         #e5e7eb;
+
+  --text-primary:        #111827;
+  --text-secondary:      #4b5563;
+  --text-accent:         #6366f1;   /* indigo */
+  --text-accent-2:       #059669;   /* emerald */
+  --text-accent-3:       #d97706;   /* amber */
+  --text-warning:        #d97706;
+  --text-danger:         #dc2626;
+  --text-muted:          #9ca3af;
+
+  --accent-primary:      #6366f1;
+  --accent-secondary:    #10b981;
+  --accent-tertiary:     #f59e0b;
+  --accent-red:          #ef4444;
+  --accent-amber:        #f59e0b;
+
+  --scrollbar-thumb:     #d1d5db;
+
+  --font-sans:           'Inter', 'Plus Jakarta Sans', sans-serif;
+  --font-mono:           'JetBrains Mono', monospace;
+
+  --rounded-card:        1rem;
+  --rounded-bubble:      1rem;
+  --rounded-chip:        9999px;
+  --rounded-input:       0.75rem;
+  --shadow-card:         0 1px 4px rgba(0,0,0,0.08);
+}
+
+/* ----- CLI / POWER SAVING (OLED) ----- */
+[data-mode="cli"] {
+  --bg-canvas:           #000000;
+  --bg-surface:          #000000;
+  --bg-sidebar-l:        #000000;
+  --bg-sidebar-r:        #000000;
+  --bg-card:             #000000;
+  --bg-card-high:        #000000;
+  --bg-input:            #000000;
+  --bg-chip:             #000000;
+  --bg-user-bubble:      #000000;
+
+  --border-main:         #00ff41;
+  --border-card:         #ffffff;
+
+  --text-primary:        #ffffff;
+  --text-secondary:      #ffffff;
+  --text-accent:         #00ff41;
+  --text-accent-2:       #00ff41;
+  --text-accent-3:       #00ff41;
+  --text-warning:        #ef4444;
+  --text-danger:         #ef4444;
+  --text-muted:          #aaaaaa;
+
+  --accent-primary:      #00ff41;
+  --accent-secondary:    #00ff41;
+  --accent-tertiary:     #00ff41;
+  --accent-red:          #ef4444;
+  --accent-amber:        #ef4444;
+
+  --scrollbar-thumb:     #00ff41;
+
+  --font-sans:           'JetBrains Mono', 'Courier New', monospace;
+  --font-mono:           'JetBrains Mono', 'Courier New', monospace;
+
+  --rounded-card:        0;
+  --rounded-bubble:      0;
+  --rounded-chip:        0;
+  --rounded-input:       0;
+  --shadow-card:         none;
+}
+
+/* =====================================================================
+   Global GPU-kill for CLI mode: sıfır animasyon, sıfır gölge
+   ===================================================================== */
+[data-mode="cli"] *:not(.material-symbols-outlined) {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  transition: none !important;
+  animation: none !important;
+  background-image: none !important;
+  font-family: var(--font-mono) !important;
+}
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined' !important;
+}
+
+[data-mode="cli"] .modern-only { display: none !important; }
+[data-mode="cli"] .cli-only    { display: block !important; }
+
+.cli-only { display: none; }
+
+/* =====================================================================
+   Scrollbar
+   ===================================================================== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+[data-mode="cli"] ::-webkit-scrollbar-thumb { border-radius: 0; }
+
+/* =====================================================================
+   Nefes alma animasyonu (modern modlarda)
+   ===================================================================== */
+@keyframes breathe {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+.animate-breathe { animation: breathe 2s infinite; }

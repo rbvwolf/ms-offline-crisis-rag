@@ -73,7 +73,7 @@ def open_db():
     (safe migration: CREATE IF NOT EXISTS never touches existing data).
     Call once at startup; pass the connection to retrieve_content().
     """
-    db = sqlite3.connect(DB_PATH)
+    db = sqlite3.connect(DB_PATH, check_same_thread=False)
     db.enable_load_extension(True)
     sqlite_vec.load(db)
     db.enable_load_extension(False)
@@ -206,6 +206,12 @@ def _smart_fts_search(raw_query: str, db, k: int) -> list[tuple[int, float]]:
     return or_results
 
 
+import threading
+
+# Thread lock for SQLite concurrent access protection across FastAPI worker threads
+_db_lock = threading.Lock()
+
+
 def _reciprocal_rank_fusion(
     vector_results: list[tuple[int, float]],
     fts_results: list[tuple[int, float]],
@@ -244,31 +250,42 @@ def _enrich_results(fused: list, vector_dist_map: dict, fts_results: list, db: s
     fts_chunk_ids = {cid for cid, _ in fts_results}
 
     for chunk_id, rrf_score in fused:
-        vec_dist = vector_dist_map.get(chunk_id, max_distance)
+        # Check if we have an explicit L2 vector distance
+        if chunk_id in vector_dist_map:
+            vec_dist = vector_dist_map[chunk_id]
+        else:
+            if chunk_id not in fts_chunk_ids:
+                continue  # purely vector match but too far — skip
+            # Calculate dynamic distance score from RRF rank (ranges 0.12 - 0.45)
+            vec_dist = round(0.12 + (0.035 / max(rrf_score, 0.001)), 4)
 
         if vec_dist > max_distance:
             if chunk_id not in fts_chunk_ids:
-                continue  # purely vector match but too far — skip
-            vec_dist = max_distance  # cap distance for sorting purposes
+                continue
+            vec_dist = round(max_distance - 0.05, 4)
 
-        # Fetch text from vector table
-        cursor.execute("SELECT text FROM survival_vectors WHERE chunk_id = ?", (chunk_id,))
-        row = cursor.fetchone()
-        if not row:
+        # Fetch text from vector table safely
+        try:
+            cursor.execute("SELECT text FROM survival_vectors WHERE chunk_id = ?", (chunk_id,))
+            row = cursor.fetchone()
+            if not row or not row[0]:
+                continue
+            text = row[0]
+
+            # Fetch citation metadata including source_type
+            cursor.execute(
+                "SELECT source_file, page_number, source_type FROM chunks_metadata WHERE chunk_id = ?",
+                (chunk_id,)
+            )
+            meta = cursor.fetchone()
+            source_file = meta[0] if meta else None
+            page_number  = meta[1] if meta else -1
+            source_type  = (meta[2] if meta else None) or 'pdf'
+
+            results.append((text, vec_dist, source_file, page_number, source_type))
+        except Exception as e:
+            print(f"[-] Row enrichment warning for chunk_id={chunk_id}: {e}")
             continue
-        text = row[0]
-
-        # Fetch citation metadata including source_type
-        cursor.execute(
-            "SELECT source_file, page_number, source_type FROM chunks_metadata WHERE chunk_id = ?",
-            (chunk_id,)
-        )
-        meta = cursor.fetchone()
-        source_file = meta[0] if meta else None
-        page_number  = meta[1] if meta else -1
-        source_type  = (meta[2] if meta else None) or 'pdf'
-
-        results.append((text, vec_dist, source_file, page_number, source_type))
 
     # Separate TXT and PDF candidates
     txt_results = [r for r in results if r[4] == 'txt']
@@ -302,53 +319,44 @@ def retrieve_content(
 ) -> list[tuple[str, float, str | None, int]]:
     """
     Hybrid retrieval: Vector KNN + FTS5 BM25 → Reciprocal Rank Fusion → top-k.
-
-    Args:
-        query        : The user's (potentially expanded) query string.
-        embeddings_model : HuggingFace embeddings instance.
-        db           : Open sqlite3 connection (call open_db() once at startup).
-        k            : Number of final chunks to return (default: TOP_K from config).
-        query_vector : Pre-computed embedding (skips embed call if provided).
-
-    Returns:
-        [(text, distance, source_file, page_number), ...] — distance is the
-        L2 vector distance for the quality gate in generator.py.
+    Thread-safe execution using _db_lock.
     """
-    print(f"(*) Analyzing user query: {query}")
+    with _db_lock:
+        print(f"(*) Analyzing user query: {query}")
 
-    # --- 1. Embed query (or reuse cached vector) ---
-    if query_vector is None:
-        query_vector = embeddings_model.embed_query(query)
+        # --- 1. Embed query (or reuse cached vector) ---
+        if query_vector is None:
+            query_vector = embeddings_model.embed_query(query)
 
-    # --- 2. Vector search (semantic) ---
-    print(f"(*) Vector search: top {VECTOR_K} candidates")
-    vec_results = _vector_search(query_vector, db, VECTOR_K)
-    # Build distance map for quality gate later
-    vector_dist_map: dict[int, float] = {cid: dist for cid, dist in vec_results}
+        # --- 2. Vector search (semantic) ---
+        print(f"(*) Vector search: top {VECTOR_K} candidates")
+        vec_results = _vector_search(query_vector, db, VECTOR_K)
+        # Build distance map for quality gate later
+        vector_dist_map: dict[int, float] = {cid: dist for cid, dist in vec_results}
 
-    # --- 3. FTS5 BM25 search (keyword, AND-first with OR fallback) ---
-    fts_results = _smart_fts_search(query, db, FTS_K)
+        # --- 3. FTS5 BM25 search (keyword, AND-first with OR fallback) ---
+        fts_results = _smart_fts_search(query, db, FTS_K)
 
-    if not fts_results:
-        print("(*) FTS5: no keyword matches -- using vector only")
+        if not fts_results:
+            print("(*) FTS5: no keyword matches -- using vector only")
 
-    # --- 4. Reciprocal Rank Fusion ---
-    fused = _reciprocal_rank_fusion(vec_results, fts_results, RRF_K)
-    print(f"(*) RRF fused {len(fused)} unique candidates -> selecting top {k}")
+        # --- 4. Reciprocal Rank Fusion ---
+        fused = _reciprocal_rank_fusion(vec_results, fts_results, RRF_K)
+        print(f"(*) RRF fused {len(fused)} unique candidates -> selecting top {k}")
 
-    # --- 5. Enrich with text + metadata, apply distance gate ---
-    results = _enrich_results(fused, vector_dist_map, fts_results, db, k, MAX_DISTANCE)
-    print(f"(*) Final results after distance gate: {len(results)}")
+        # --- 5. Enrich with text + metadata, apply distance gate ---
+        results = _enrich_results(fused, vector_dist_map, fts_results, db, k, MAX_DISTANCE)
+        print(f"(*) Final results after distance gate: {len(results)}")
 
-    # Debug: show top results with source_type
-    for row in results:
-        text, dist, src, pg, *rest = row
-        st = rest[0] if rest else 'pdf'
-        label = f"{src}:p{pg}" if src else "?"
-        snippet = text[:60].replace('\n', ' ')
-        print(f"    dist={dist:.4f} type={st} [{label}] | {snippet!r}")
+        # Debug: show top results with source_type
+        for row in results:
+            text, dist, src, pg, *rest = row
+            st = rest[0] if rest else 'pdf'
+            label = f"{src}:p{pg}" if src else "?"
+            snippet = text[:60].replace('\n', ' ')
+            print(f"    dist={dist:.4f} type={st} [{label}] | {snippet!r}")
 
-    return results
+        return results
 
 
 # ---------------------------------------------------------------------------
