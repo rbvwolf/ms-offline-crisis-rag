@@ -1,14 +1,20 @@
-MORS ALFABESİ - TAM HARF VE SAYI KODLARI:
-- Kısa sinyal = Nokta (.), Uzun sinyal = Çizgi (-).
-- SOS acil çağrısı: ... --- ... (üç kısa, üç uzun, üç kısa)
-- A: .-    B: -...  C: -.-.  D: -..   E: .     F: ..-.
-- G: --.   H: ....  I: ..    J: .---  K: -.-   L: .-..
-- M: --    N: -.    O: ---   P: .--.  R: .-.   S: ...
-- T: -     U: ..-   V: ...-  W: .--   X: -..-  Y: -.--  Z: --..
-- 0: -----  1: .----  2: ..---  3: ...--  4: ....-
-- 5: .....  6: -....  7: --...  8: ---..  9: ----.
-- Harfler arası: 3 birim bekleme. Kelimeler arası: 7 birim bekleme.
-- K (-.-) ayrıca "Tamam / Anlaşıldı" sinyali olarak kullanılır.
+MORS ALFABESİ VE ACİL SİNYALİZASYON:
+
+Mors alfabesi, kısa (nokta "." = 1 birim) ve uzun (çizgi "-" = 3 birim) sinyallerden oluşan evrensel bir kodlama sistemidir. Elektrik, ses, ışık veya düdük gibi tek bit'lik bir kanalda mesaj iletmek için kullanılır.
+
+SOS ACİL ÇAĞRISI:
+SOS, uluslararası kabul görmüş acil yardım sinyalidir: üç kısa, üç uzun, üç kısa: "... --- ..."
+SOS'u fener, ayna yansıması, düdük veya telsizle verin; aralarında 1 dakika bekleyerek tekrarlayın.
+
+ACİL DURUM KULLANIMI:
+- Işık sinyali: El feneri veya araç farıyla nokta = kısa flaş, çizgi = uzun flaş.
+- Ses sinyali: Düdük veya borazan ile nokta = kısa, çizgi = uzun ses.
+- Taş veya dal: Yüksek bir yere görünür biçimde "SOS" harflerini taş veya dallarla dizin.
+- K (-.-) sinyali: "Tamam / Anlaşıldı" anlamına gelir, kurtarma ekiplerinin yanıtı budur.
+
+TEMEL SİNYAL KURALLARI:
+- Harfler arasında 3 birim, kelimeler arasında 7 birim bekleme yapılır.
+- Telsiz yoksa bile taş veya duman sinyali ile SOS verilebilir; önemli olan ritmik tekrardır.
 
 PMR TELSİZ KULLANIMI (LİSANSSIZ):
 - PMR 446 telsizler şebeke gerektirmeyen en güvenilir afet iletişim aracıdır.

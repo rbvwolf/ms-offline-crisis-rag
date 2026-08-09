@@ -237,34 +237,73 @@ def _reciprocal_rank_fusion(
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
 
+# Absolute vector distance cap for FTS-boosted chunks.
+# Even with a keyword match, a chunk that is this far semantically is noise.
+_FTS_HARD_VECTOR_CAP = 1.10
+
+# Max chunks allowed from a single source file.
+# Prevents one file (e.g. mors alphabet table) from flooding all TOP_K slots.
+_MAX_CHUNKS_PER_FILE = 2
+
+
+def _rrf_to_dist(rrf_score: float, max_dist: float = 0.85) -> float:
+    """
+    Maps an RRF score (higher = better) to a synthetic distance (lower = better).
+
+    Scale factor 10.0 maps typical RRF scores to the [0.35, 0.84] distance range:
+      rrf = 0.033 (rank-1 both lists) → dist ≈ 0.52  (strong match)
+      rrf = 0.016 (rank-1 one list)   → dist ≈ 0.69  (decent match)
+      rrf = 0.008 (rank-5 one list)   → dist ≈ 0.77  (weak match)
+    """
+    synthetic = max_dist - rrf_score * 10.0
+    return round(max(0.35, min(max_dist - 0.02, synthetic)), 4)
+
+
 def _enrich_results(fused: list, vector_dist_map: dict, fts_results: list, db: sqlite3.Connection, top_k: int, max_distance: float) -> list:
     """
     Fetches the actual text and metadata for the top RRF results.
-    Filters out results that are too far away in vector space (if purely vector match).
-    FTS-matched chunks bypass the distance gate — keyword matches are trusted.
+
+    Distance policy:
+      - Chunks in vector_dist_map: use real L2 distance.
+      - Chunks beyond max_distance but in fts_chunk_ids: use RRF-scaled synthetic
+        distance (_rrf_to_dist) instead of a hard clamp to avoid all showing 0.80.
+      - Chunks with actual vector distance > _FTS_HARD_VECTOR_CAP: always skipped,
+        even with an FTS keyword match (they are semantically unrelated noise).
+      - Chunks only in FTS (not in vector results at all): use _rrf_to_dist;
+        skip if synthetic dist >= max_distance.
+
+    Source diversity:
+      - _MAX_CHUNKS_PER_FILE caps how many chunks from the same file can appear.
+        This prevents one file (e.g. a full alphabet table) from filling all slots.
+
     Returns [(text, distance, source_file, page_number, source_type), ...].
     """
     cursor = db.cursor()
     results = []
-    # Build a set for O(1) FTS membership checks
     fts_chunk_ids = {cid for cid, _ in fts_results}
 
     for chunk_id, rrf_score in fused:
-        # Check if we have an explicit L2 vector distance
         if chunk_id in vector_dist_map:
             vec_dist = vector_dist_map[chunk_id]
-        else:
-            if chunk_id not in fts_chunk_ids:
-                continue  # purely vector match but too far — skip
-            # Calculate dynamic distance score from RRF rank (ranges 0.12 - 0.45)
-            vec_dist = round(0.12 + (0.035 / max(rrf_score, 0.001)), 4)
 
-        if vec_dist > max_distance:
+            # Hard cap: too far even for FTS keyword rescue
+            if vec_dist > _FTS_HARD_VECTOR_CAP:
+                continue
+
+            # Beyond soft max_distance — only keep if FTS also matched
+            if vec_dist > max_distance:
+                if chunk_id not in fts_chunk_ids:
+                    continue
+                # Use RRF-based synthetic distance instead of clamping to 0.80
+                vec_dist = _rrf_to_dist(rrf_score, max_distance)
+        else:
+            # FTS-only chunk (not in top vector candidates)
             if chunk_id not in fts_chunk_ids:
                 continue
-            vec_dist = round(max_distance - 0.05, 4)
+            vec_dist = _rrf_to_dist(rrf_score, max_distance)
+            if vec_dist >= max_distance:
+                continue  # RRF score too weak to trust
 
-        # Fetch text from vector table safely
         try:
             cursor.execute("SELECT text FROM survival_vectors WHERE chunk_id = ?", (chunk_id,))
             row = cursor.fetchone()
@@ -272,7 +311,6 @@ def _enrich_results(fused: list, vector_dist_map: dict, fts_results: list, db: s
                 continue
             text = row[0]
 
-            # Fetch citation metadata including source_type
             cursor.execute(
                 "SELECT source_file, page_number, source_type FROM chunks_metadata WHERE chunk_id = ?",
                 (chunk_id,)
@@ -287,6 +325,18 @@ def _enrich_results(fused: list, vector_dist_map: dict, fts_results: list, db: s
             print(f"[-] Row enrichment warning for chunk_id={chunk_id}: {e}")
             continue
 
+    # --- Source diversity: cap chunks per source file ---
+    file_counts: dict[str, int] = {}
+    filtered: list = []
+    # Sort by distance ascending so we keep the best chunk from each file first
+    results.sort(key=lambda r: r[1])
+    for r in results:
+        fname = r[2] or '__unknown__'
+        if file_counts.get(fname, 0) < _MAX_CHUNKS_PER_FILE:
+            filtered.append(r)
+            file_counts[fname] = file_counts.get(fname, 0) + 1
+    results = filtered
+
     # Separate TXT and PDF candidates
     txt_results = [r for r in results if r[4] == 'txt']
     pdf_results = [r for r in results if r[4] == 'pdf']
@@ -295,17 +345,13 @@ def _enrich_results(fused: list, vector_dist_map: dict, fts_results: list, db: s
     pdf_results.sort(key=lambda r: r[1])
 
     final_results = []
-    # Take up to 3 TXT chunks first to give curated TXT knowledge priority
-    max_txt = min(3, len(txt_results)) if pdf_results else len(txt_results)
-    final_results.extend(txt_results[:max_txt])
+    # 1. Take curated TXT chunks first (up to top_k slots)
+    final_results.extend(txt_results[:top_k])
 
-    # Fill remaining slots with top PDF chunks so PDFs are always synthesized & cited
-    remaining = top_k - len(final_results)
-    final_results.extend(pdf_results[:remaining])
-
-    # If extra slots remain, fill with any leftover TXT chunks
-    if len(final_results) < top_k and len(txt_results) > max_txt:
-        final_results.extend(txt_results[max_txt : max_txt + (top_k - len(final_results))])
+    # 2. Only fill remaining slots with PDF chunks if we need more context
+    if len(final_results) < top_k:
+        remaining = top_k - len(final_results)
+        final_results.extend(pdf_results[:remaining])
 
     return final_results
 

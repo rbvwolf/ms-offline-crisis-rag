@@ -146,6 +146,9 @@ async def post_chat(request: Request):
         }, status_code=503)
 
     def event_generator():
+        print(f"\n{'='*55}")
+        print(f"  [WEB] Sorgu: {query!r}")
+        print(f"{'='*55}")
         gen = answer_query_generator(
             user_question=query,
             model=app_state["model"],
@@ -156,18 +159,27 @@ async def post_chat(request: Request):
             state_manager=app_state["state_manager"]
         )
 
+        token_count = 0
         for payload in gen:
             p_type = payload.get("type")
             if p_type == "rag_docs":
                 docs = payload.get("docs", [])
                 app_state["last_rag_docs"] = docs
+                print(f"(*) RAG panel guncellendi: {len(docs)} chunk SSE uzerinden gonderiliyor")
+                for i, d in enumerate(docs, 1):
+                    fname = d.get("source_file", "?")
+                    dist  = d.get("distance", 0)
+                    snip  = (d.get("text", "")[:60]).replace("\n", " ")
+                    print(f"    [{i}] dist={dist:.4f} | {fname} | {snip!r}")
                 data_json = json.dumps({"rag_docs": docs}, ensure_ascii=False)
                 yield f"data: {data_json}\n\n"
             elif p_type == "token":
                 token = payload.get("token", "")
+                token_count += 1
                 data_json = json.dumps({"token": token}, ensure_ascii=False)
                 yield f"data: {data_json}\n\n"
             elif p_type == "done":
+                print(f"(*) Stream tamamlandi — {token_count} token SSE uzerinden gonderildi")
                 yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

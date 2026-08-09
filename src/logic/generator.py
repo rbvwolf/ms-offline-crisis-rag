@@ -211,7 +211,8 @@ def _build_system_prompt(context_text: str, state_manager: StateManager,
                          inject_inventory: bool = False,
                          user_question: str = "") -> str:
     """
-    Assembles a compact, direct system prompt without template headers.
+    Assembles a compact, direct system prompt.
+    Rules designed for Phi-3.5-mini (SLM): short imperatives, no template echoing.
     """
     state_section = ""
     if inject_inventory:
@@ -220,19 +221,21 @@ def _build_system_prompt(context_text: str, state_manager: StateManager,
             state_section = f"\n{state_block}\n"
 
     inventory_rule = (
-        "- Kullanici envanterini yalnizca rasyon/stok sorgularinda kullan."
+        "7. Kullanici envanterini yalnizca rasyon/stok sorgularinda kullan."
         if inject_inventory and state_section
         else ""
     )
 
-    system_prompt = f"""Sen afet durumlarinda yardimci olan uzman Kriz Asistanisin.
-Gorevin BILGI KAYNAKLARI metinlerini kullanarak kullanicinin sorusuna net, Türkçe, dogru ve duzenli bir yanit sunmaktir.
+    system_prompt = f"""Sen afet ve kriz durumlarinda Turkce yanit veren uzman Kriz Asistanisin.
+Gorevin BILGI KAYNAKLARI metinlerini kullanarak kullanicinin sorusuna net, dogru ve anlasilir bir Turkce yanit vermektir.
 {state_section}
 Kurallar:
-- Soruya dogrudan Türkçe yanit ver. "Yanit:", "Format:", "Maddeler:" gibi basliklar yazma.
-- Yalnizca BILGI KAYNAKLARI'ndaki gercek bilgileri kullan. Bilgi uydurma.
-- Mors Alfabesi soruldugunda; Mors alfabesinin ne oldugunu, acil durumlarda ses, isik veya dudukle nasil sinyal verildigini ve SOS (... --- ...) kuralini anlat. Tek basina anlamsiz cizgi noktalar dokme.
-- Yanitini temiz paragraf veya numarali liste halinde sun. Tekrara dusme.
+- Soruya dogrudan Turkce yanit ver. "Yanit:", "Format:", "Giris:" gibi basliklar yazma.
+- Yalnizca BILGI KAYNAKLARI'ndaki bilgileri kullan. Bilgi uydurma.
+- Numarali liste veya maddeler kullan; adimlari net acikla.
+- Yildiz (*), cift yildiz (**), alt cizgi (_) kullanma; sadece duz metin yaz.
+- Mors alfabesi soruldugunda; ne oldugunu, acil durumda ses, isik veya dudukle SOS sinyalinin nasil verildigini ve PMR telsiz kullanımını anlat. Harf/rakam tablosu yazma.
+- Tekrara dusme.
 {inventory_rule}
 
 BILGI KAYNAKLARI:
@@ -453,6 +456,30 @@ def _safe_close_stream(stream):
             pass
 
 
+def _has_repetition_loop(raw_tokens: list) -> bool:
+    """
+    Detects if the LLM has entered a degeneration repetition loop
+    (e.g. 'dedektörünün dedektörünün dedektörünün').
+    Only triggers on 3-word phrase repeats or 5+ single non-stopword repeats.
+    """
+    if len(raw_tokens) < 10:
+        return False
+    recent_text = "".join(raw_tokens[-40:]).lower()
+    words = [w for w in recent_text.split() if len(w) >= 3]
+    if len(words) >= 9:
+        # Check if a 3-word sequence repeats 3 times
+        for i in range(len(words) - 5):
+            trio = f"{words[i]} {words[i+1]} {words[i+2]}"
+            if len(trio) >= 10 and recent_text.count(trio) >= 3:
+                return True
+        # Check if a single non-stopword of length >= 4 repeats 5+ times in recent 20 words
+        _STOPWORDS = {'veya', 'gibi', 'bina', 'icin', 'için', 'daha', 'sonra', 'olan', 'durun', 'gidin', 'yapin', 'yapın', 'alın', 'alin'}
+        last_word = words[-1]
+        if len(last_word) >= 4 and last_word not in _STOPWORDS and words[-20:].count(last_word) >= 5:
+            return True
+    return False
+
+
 def answer_query_generator(
     user_question: str,
     model,
@@ -618,6 +645,10 @@ def answer_query_generator(
                     print(delta, end="", flush=True)
                     raw_tokens.append(delta)
                     token_count += max(1, len(delta) // 3)
+
+                    if _has_repetition_loop(raw_tokens):
+                        print("\n[*] Repetition loop detected — terminating stream.")
+                        break
 
                     last_chars = "".join(raw_tokens[-12:])
                     if "[BITTI]" in last_chars or "Şimdi Yanı" in last_chars or "Yanıt Formatı" in last_chars:

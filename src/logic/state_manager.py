@@ -515,19 +515,46 @@ def fix_turkish_pdf_spacing(text: str) -> str:
     text = text.replace("Şimdi Yanı", "")
     text = text.replace("Yanıt Formatı ve Kurallı:", "")
     text = text.replace("Mors alfabesi veya sinyal soruları:", "")
+    text = text.replace("Programını kullanmaktadır:", "")
+    text = text.replace("Programını kullanmaktadır", "")
     return text
+
+
+def _strip_form_hallucinations(text: str) -> str:
+    """
+    Phi-3.5-mini sometimes generates 'X: Evet', 'X: Hayır', 'X: Kes' lines
+    that mimic a questionnaire/checklist form — these are hallucinations that
+    appear when the model sees structured context.  Strip them.
+    """
+    lines = text.split('\n')
+    clean_lines = []
+    # Patterns that signal a hallucinated form line
+    _FORM_SUFFIXES = (': Evet', ': Hayır', ': Kes', ': hayır', ': evet', ': kes')
+    _FORM_KEYWORDS = ('süzün:', 'yapi lan', 'yapılan', 'programini', 'programını')
+    for line in lines:
+        stripped = line.strip()
+        # Skip lines that end with a form-style answer
+        if any(stripped.endswith(s) for s in _FORM_SUFFIXES):
+            continue
+        # Skip lines containing known hallucination phrases
+        if any(kw in stripped.lower() for kw in _FORM_KEYWORDS):
+            continue
+        clean_lines.append(line)
+    return '\n'.join(clean_lines)
 
 
 def clean_llm_response(text: str) -> str:
     """
     Module-level helper used by generator.py.
     Removes phi-3.5-mini artifact annotations, markdown bold asterisks,
-    fixes PDF diacritic spacing, and deduplicates repetitive paragraphs.
+    fixes PDF diacritic spacing, strips form hallucinations,
+    and deduplicates repetitive paragraphs.
     Applied AFTER streaming completes, before storing in chat history.
     """
     for pattern in _ARTIFACT_PATTERNS:
         text = pattern.sub('', text)
     text = text.replace('**', '')
     text = fix_turkish_pdf_spacing(text)
+    text = _strip_form_hallucinations(text)
     text = deduplicate_paragraphs(text)
     return text.strip()

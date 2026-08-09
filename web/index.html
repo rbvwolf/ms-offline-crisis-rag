@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Crisis RAG &#8212; &#199;evrim D&#305;&#351;&#305; Kriz Asistan&#305;</title>
   <meta name="description" content="&#304;nternetsiz, &#351;ebekesiz afet ortamlar&#305;nda &#231;al&#305;&#351;an yerel yapay zeka kriz asistan&#305;.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='85'>&#x26A1;</text></svg>">
 
   <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
@@ -89,7 +90,7 @@
     /* Orta */
     #main { flex: 1; display: flex; flex-direction: column; background: var(--bg-canvas); overflow: hidden; position: relative; min-width: 0; }
     #chatArea { flex: 1; overflow-y: auto; padding: 1.5rem; }
-    #chatMessages { display: flex; flex-direction: column; gap: 1.5rem; max-width: 48rem; margin: 0 auto; padding-bottom: 8rem; }
+    #chatMessages { display: flex; flex-direction: column; gap: 1.5rem; max-width: 48rem; margin: 0 auto; width: 100%; padding-bottom: 8rem; }
 
     /* Input */
     #inputArea {
@@ -280,7 +281,7 @@
     <main id="main">
       <div id="chatArea">
 
-        <!-- Giris ekrani -->
+        <!-- Giris ekrani (Ortalanmis) -->
         <div id="introScreen" style="max-width:48rem;margin:0 auto;text-align:center;padding:3rem 1rem;">
           <div style="display:inline-flex;align-items:center;justify-content:center;width:4rem;height:4rem;border:1px solid var(--border-card);border-radius:var(--rounded-card);background:var(--bg-card);margin-bottom:1rem;box-shadow:var(--shadow-card);">
             <span class="material-symbols-outlined" style="font-size:2rem;color:var(--accent-primary);">satellite_alt</span>

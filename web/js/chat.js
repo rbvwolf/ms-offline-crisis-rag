@@ -33,10 +33,7 @@ function saveChatHistory(history) {
 
 function renderSavedHistory() {
   const history = loadChatHistory();
-  if (history.length > 0) {
-    const intro = document.getElementById('introScreen');
-    if (intro) intro.style.display = 'none';
-  }
+  // introScreen stays permanently at top of scrollable #chatArea
   history.forEach(item => {
     appendMessageDOM(item.role, item.html, false);
   });
@@ -53,9 +50,7 @@ function appendMessageDOM(role, html, shouldSave = true) {
   const chatContainer = document.getElementById('chatMessages');
   if (!chatContainer) return;
 
-  const intro = document.getElementById('introScreen');
-  if (intro) intro.style.display = 'none';
-
+  // introScreen stays permanently at top of scrollable #chatArea
   const isUser = role === 'user';
 
   const wrapper = document.createElement('div');
@@ -64,18 +59,64 @@ function appendMessageDOM(role, html, shouldSave = true) {
   const label = document.createElement('span');
   label.className = 'text-[10px] uppercase tracking-wider font-mono';
   label.style.color = isUser ? 'var(--text-muted)' : 'var(--text-accent)';
-  label.textContent = isUser ? 'Kullan\u0131c\u0131' : 'CRISIS Asistan\u0131';
+  label.textContent = isUser ? 'Kullanıcı' : 'CRISIS Asistanı';
 
   const bubble = document.createElement('div');
   bubble.className = `px-4 py-3 max-w-[85%] text-sm leading-relaxed`;
-  bubble.style.background = isUser ? 'var(--bg-user-bubble)' : 'var(--bg-card)';
-  bubble.style.border     = `1px solid ${isUser ? 'var(--border-card)' : 'var(--border-main)'}`;
-  bubble.style.borderRadius = isUser ? 'var(--rounded-bubble) var(--rounded-bubble) 0.25rem var(--rounded-bubble)'
-                                      : 'var(--rounded-bubble) var(--rounded-bubble) var(--rounded-bubble) 0.25rem';
+  bubble.style.background   = isUser ? 'var(--bg-user-bubble)' : 'var(--bg-card)';
+  bubble.style.border       = `1px solid ${isUser ? 'var(--border-card)' : 'var(--border-main)'}`;
+  bubble.style.borderRadius = isUser
+    ? 'var(--rounded-bubble) var(--rounded-bubble) 0.25rem var(--rounded-bubble)'
+    : 'var(--rounded-bubble) var(--rounded-bubble) var(--rounded-bubble) 0.25rem';
   bubble.style.color = 'var(--text-primary)';
   bubble.innerHTML = html;
 
-  wrapper.appendChild(label);
+  const headerRow = document.createElement('div');
+  headerRow.style.cssText = 'display:flex;align-items:center;gap:0.5rem;';
+  headerRow.appendChild(label);
+
+  // Copy button — only for assistant messages
+  if (!isUser) {
+    const copyBtn = document.createElement('button');
+    copyBtn.title = 'Kopyala';
+    copyBtn.style.cssText = [
+      'background:none',
+      'border:none',
+      'cursor:pointer',
+      'padding:0.1rem 0.3rem',
+      'color:var(--text-muted)',
+      'font-size:0.7rem',
+      'opacity:0.55',
+      'transition:opacity 0.15s',
+      'border-radius:0.25rem',
+      'line-height:1',
+    ].join(';');
+    copyBtn.innerHTML = '&#x2398;'; // ⎘ clipboard icon
+    copyBtn.addEventListener('mouseenter', () => copyBtn.style.opacity = '1');
+    copyBtn.addEventListener('mouseleave', () => copyBtn.style.opacity = '0.55');
+    copyBtn.addEventListener('click', () => {
+      const rawText = bubble.innerText || bubble.textContent || '';
+      navigator.clipboard.writeText(rawText.trim()).then(() => {
+        copyBtn.innerHTML = '&#x2713;'; // ✓
+        copyBtn.style.color = 'var(--accent-secondary)';
+        setTimeout(() => {
+          copyBtn.innerHTML = '&#x2398;';
+          copyBtn.style.color = 'var(--text-muted)';
+        }, 1500);
+      }).catch(() => {
+        // Fallback for older browsers
+        const ta = document.createElement('textarea');
+        ta.value = rawText.trim();
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      });
+    });
+    headerRow.appendChild(copyBtn);
+  }
+
+  wrapper.appendChild(headerRow);
   wrapper.appendChild(bubble);
   chatContainer.appendChild(wrapper);
   scrollToBottom();
@@ -204,9 +245,14 @@ function cleanStreamOutput(text) {
   let cleaned = text;
   // Remove [BITTI] tag and trailing garbage
   cleaned = cleaned.replace(/\[BITTI\].*$/gis, '');
-  // Remove prompt leak headers
-  cleaned = cleaned.replace(/^(?:Yan[ıi]t\s+Format[ıi]\s+ve\s+Kurall[ıi]?:?|Mors\s+alfabesi\s+veya\s+sinyal\s+sorular[ıi]?:?.*|Şimdi\s+Yan[ıi]t?:?|Yan[ıi]t?:?)\s*/gim, '');
-  return cleaned.strip ? cleaned.strip() : cleaned.trim();
+  // Remove prompt leak headers & hallucinated preamble prefixes
+  cleaned = cleaned.replace(/^(?:Programını\s+kullanmaktadır:?|Programı:?|Yanı?t\s+Formatı?\s+ve\s+Kurallı?:?|Mors\s+alfabesi\s+veya\s+sinyal\s+sorularıyla?:?.*|Şimdi\s+Yanı?t?:?|Yanı?t?:?)\s*/gim, '');
+  // Strip markdown bold/italic markers that the model emits despite being told not to
+  cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, '$1');  // **bold** → plain
+  cleaned = cleaned.replace(/\*([^*]+)\*/g, '$1');       // *italic* → plain
+  cleaned = cleaned.replace(/__([^_]+)__/g, '$1');       // __bold__ → plain
+  cleaned = cleaned.replace(/_([^_]+)_/g, '$1');         // _italic_ → plain
+  return cleaned.trim();
 }
 
 function escapeHtml(str) {

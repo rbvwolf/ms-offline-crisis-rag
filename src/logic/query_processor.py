@@ -13,21 +13,21 @@ Public API:
 # Values: ASCII synonyms that help the embedding model find relevant chunks.
 # ---------------------------------------------------------------------------
 _QUERY_EXPANSIONS = {
-    "deprem":       "deprem aninda guvensiz sarsinti enkaz",
-    "yangin":       "yangin sondurme kacis tahliye duman",
-    "su":           "su aritma temizleme icilebilir hale getirme",
-    "ilk yardim":   "ilk yardim acil mudahale yarali",
-    "mors":         "mors alfabesi nokta cizgi harf kodu SOS sinyal",
-    "alfabesi":     "mors alfabesi nokta cizgi harf kodu sinyal",
-    "kirik":        "kirik kol bacak atel sabitleme mudahale",
-    "yanik":        "yanik deri sogutma sarma mudahale",
-    "kanama":       "kanama yara baski uygulama durdurma",
-    "enkaz":        "enkaz altinda nefes bekleme kurtarma sinyal",
-    "rasyon":       "rasyon yiyecek su gunluk plan hesaplama",
-    "barinak":      "barinak siginak cadur kurma afet",
-    "telsiz":       "telsiz haberlesme frekans PMR acil iletisim",
-    "psikoloji":    "psikolojik destek sakinlestirme panik stres",
-    "cocuk":        "cocuk sakinlestirme panik korku psikolojik",
+    "deprem":       "deprem anında hayatta kalma çök kapan tutun enkaz sarsıntı",
+    "yangin":       "yangın söndürme kaçış tahliye duman",
+    "su":           "su arıtma çökeltme filtreleme kaynatma içme",
+    "ilk yardim":   "ilk yardım acil müdahale yaralı",
+    "mors":         "mors alfabesi sos acil sinyal telsiz pmr",
+    "alfabesi":     "mors alfabesi sos acil sinyal telsiz pmr",
+    "kirik":        "kırık kol bacak atel sabitleme müdahale",
+    "yanik":        "yanık deri soğutma sarma müdahale",
+    "kanama":       "kanama yara baskı uygulama durdurma",
+    "enkaz":        "enkaz altında nefes bekleme kurtarma sinyal",
+    "rasyon":       "rasyon yiyecek su günlük plan hesaplama",
+    "barinak":      "barınak sığınak çadır kurma afet",
+    "telsiz":       "telsiz haberleşme frekans PMR acil iletişim",
+    "psikoloji":    "psikolojik destek sakinleştirme panik stres",
+    "cocuk":        "çocuk sakinleştirme panik korku psikolojik",
 }
 
 

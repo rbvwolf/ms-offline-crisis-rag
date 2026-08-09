@@ -33,7 +33,7 @@ TOP_K = 6                  # final chunks passed to the LLM after fusion + dista
 
 # --- Generation ---
 MAX_CONTEXT_CHARS = 2800    # concise cap on context sent to the LLM to prevent attention drift
-MAX_GENERATION_TOKENS = 600 # Accommodate user's request for examples which increases output length
+MAX_GENERATION_TOKENS = 600  # Reverted to 600: user verified 203 tokens wasn't hitting cap
 STREAM_TIMEOUT_SECONDS = 120 # CPU inference is slow; 120s gives phi-3.5 time to finish
 MAX_HISTORY_TURNS = 3       # number of back-and-forth conversation turns kept in memory
 
