@@ -173,6 +173,11 @@ async def post_chat(request: Request):
                     print(f"    [{i}] dist={dist:.4f} | {fname} | {snip!r}")
                 data_json = json.dumps({"rag_docs": docs}, ensure_ascii=False)
                 yield f"data: {data_json}\n\n"
+            elif p_type == "telemetry":
+                telem = payload.get("telemetry", {})
+                app_state["last_telemetry"] = telem
+                data_json = json.dumps({"telemetry": telem}, ensure_ascii=False)
+                yield f"data: {data_json}\n\n"
             elif p_type == "token":
                 token = payload.get("token", "")
                 token_count += 1
@@ -221,7 +226,91 @@ async def delete_inventory():
         return JSONResponse({"status": "cleared"})
     return JSONResponse({"status": "no_state_manager"})
 
+@app.get("/api/file/{filename}")
+async def get_raw_file(filename: str):
+    """
+    Returns full content of a raw TXT file or extracts text from a PDF file for viewing in browser.
+    """
+    raw_txts_dir = PROJECT_DIR / "data" / "raw_txts"
+    raw_pdfs_dir = PROJECT_DIR / "data" / "raw_pdfs"
+    pdfs_dir     = PROJECT_DIR / "data" / "pdfs"
+
+    # 1. TXT Search
+    txt_path = raw_txts_dir / filename
+    if not txt_path.exists() and raw_txts_dir.exists():
+        for p in raw_txts_dir.glob("*.txt"):
+            if p.name.lower() == filename.lower():
+                txt_path = p
+                break
+
+    if txt_path.exists() and txt_path.is_file():
+        content = txt_path.read_text(encoding="utf-8", errors="replace")
+        return JSONResponse({"filename": txt_path.name, "type": "txt", "content": content})
+
+    # 2. PDF Search (check raw_pdfs and pdfs)
+    pdf_path = raw_pdfs_dir / filename
+    if not pdf_path.exists():
+        pdf_path = pdfs_dir / filename
+    if not pdf_path.exists():
+        for d in (raw_pdfs_dir, pdfs_dir):
+            if d.exists():
+                for p in d.glob("*.pdf"):
+                    if p.name.lower() == filename.lower():
+                        pdf_path = p
+                        break
+
+    if pdf_path.exists() and pdf_path.is_file():
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(pdf_path)
+            num_pages = len(reader.pages)
+            pages_text = []
+            for i, page in enumerate(reader.pages):
+                ptxt = page.extract_text() or ""
+                if ptxt.strip():
+                    pages_text.append(f"--- SAYFA {i+1} / {num_pages} ---\n{ptxt.strip()}")
+            full_text = "\n\n".join(pages_text) if pages_text else f"[PDF İçeriği Okunamadı - {num_pages} sayfa]"
+            return JSONResponse({"filename": pdf_path.name, "type": "pdf", "content": full_text})
+        except Exception as e:
+            return JSONResponse({"filename": pdf_path.name, "type": "pdf", "content": f"[PDF Belgesi] {pdf_path.name}\nSayfa okuma hatası: {e}\nBoyut: {pdf_path.stat().st_size} byte"})
+
+    return JSONResponse({"error": f"'{filename}' dosyası bulunamadı"}, status_code=404)
+
+
+@app.post("/api/shutdown")
+async def shutdown_server():
+    """
+    Triggers graceful shutdown of the API server.
+    """
+    print("\n[+] [API SHUTDOWN] Güvenli kapatma emri alındı. Kriz asistanı sunucusu kapatılıyor...")
+    os._exit(0)
+
+
+def _cli_shutdown_listener():
+    """
+    Listens on CMD stdin for 'q', 'exit', 'kapat', 'cikis' to cleanly shut down api.py.
+    """
+    import sys, time
+    time.sleep(1.0)
+    print("\n" + "="*60)
+    print("[*] SUNUCU HAZIR! Kapatmak için CMD terminaline 'q', 'kapat', 'cikis' yazabilirsiniz.")
+    print("="*60 + "\n")
+    while True:
+        try:
+            line = sys.stdin.readline()
+            if not line:
+                break
+            cmd = line.strip().lower()
+            if cmd in ('q', 'quit', 'exit', 'kapat', 'cikis', 'çıkış'):
+                print("\n[+] [CLI SHUTDOWN] Güvenli kapatma emri alındı. Sunucu kapatılıyor...")
+                os._exit(0)
+        except Exception:
+            break
+
+
 if __name__ == "__main__":
+    import threading
+    threading.Thread(target=_cli_shutdown_listener, daemon=True).start()
     uvicorn.run(
         "api:app",
         host="127.0.0.1",

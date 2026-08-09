@@ -35,6 +35,7 @@ from core.config import (
     MAX_GENERATION_TOKENS,
     CACHE_HIT_THRESHOLD, MIN_USEFUL_WORDS, TOP_K
 )
+MAX_GENERATION_CHARS = 3500
 from retriever import open_db, retrieve_content
 from query_processor import expand_query
 from context_builder import build_context
@@ -234,7 +235,7 @@ Kurallar:
 - Yalnizca BILGI KAYNAKLARI'ndaki bilgileri kullan. Bilgi uydurma.
 - Numarali liste veya maddeler kullan; adimlari net acikla.
 - Yildiz (*), cift yildiz (**), alt cizgi (_) kullanma; sadece duz metin yaz.
-- Mors alfabesi soruldugunda; ne oldugunu, acil durumda ses, isik veya dudukle SOS sinyalinin nasil verildigini ve PMR telsiz kullanımını anlat. Harf/rakam tablosu yazma.
+- Mors alfabesi soruldugunda SOS (. . .  - - -  . . .) veya MORS sinyallerini nokta (.) ve cizgi (-) isaretleriyle acikca goster. Rastgele harfler (R-E-S) uydurma.
 - Tekrara dusme.
 {inventory_rule}
 
@@ -399,8 +400,8 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
             if time.time() - start_time > STREAM_TIMEOUT_SECONDS:
                 print("\n[!] Generation time limit reached.")
                 break
-            if token_count >= MAX_GENERATION_TOKENS:
-                print("\n[!] Token limit reached.")
+            if token_count >= MAX_GENERATION_CHARS:
+                print("\n[!] Character limit reached.")
                 break
             if not chunk.choices:
                 continue
@@ -408,8 +409,7 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
             if delta:
                 print(delta, end="", flush=True)
                 raw_tokens.append(delta)
-                # Approximate token count: Turkish subword tokens average ~2.5 chars
-                token_count += max(1, len(delta) // 3)
+                token_count += len(delta)
 
                 # Early stop: if model outputted the [BITTI] token, kill stream
                 last_chars = "".join(raw_tokens[-7:])
@@ -425,9 +425,7 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
             return "Bir sorun olustu, lutfen tekrar deneyin.", False
 
         # Strip [BITTI] marker and artifact annotations before storing in history.
-        # IMPORTANT: [BITTI] must NOT remain in chat history because on the next turn
-        # the model sees it and may return an empty response ("must contain output text" error).
-        visible_response = clean_llm_response(raw_response)
+        visible_response = clean_llm_response(raw_response, user_question=user_question)
         # clean_llm_response already strips [BITTI] via regex; also strip any inline occurrence
         visible_response = re.sub(r'\[BITTI\].*', '', visible_response, flags=re.DOTALL).strip()
 
@@ -462,15 +460,15 @@ def _has_repetition_loop(raw_tokens: list) -> bool:
     (e.g. 'dedektörünün dedektörünün dedektörünün').
     Only triggers on 3-word phrase repeats or 5+ single non-stopword repeats.
     """
-    if len(raw_tokens) < 10:
+    if len(raw_tokens) < 8:
         return False
-    recent_text = "".join(raw_tokens[-40:]).lower()
+    recent_text = " ".join(raw_tokens[-40:]).lower()
     words = [w for w in recent_text.split() if len(w) >= 3]
-    if len(words) >= 9:
+    if len(words) >= 8:
         # Check if a 3-word sequence repeats 3 times
         for i in range(len(words) - 5):
             trio = f"{words[i]} {words[i+1]} {words[i+2]}"
-            if len(trio) >= 10 and recent_text.count(trio) >= 3:
+            if len(trio) >= 8 and recent_text.count(trio) >= 3:
                 return True
         # Check if a single non-stopword of length >= 4 repeats 5+ times in recent 20 words
         _STOPWORDS = {'veya', 'gibi', 'bina', 'icin', 'için', 'daha', 'sonra', 'olan', 'durun', 'gidin', 'yapin', 'yapın', 'alın', 'alin'}
@@ -508,24 +506,77 @@ def answer_query_generator(
         inv_text = state_manager.get_readable_inventory()
         print(f"(*) Inventory show response generated directly:\n{inv_text}")
         yield {"type": "rag_docs", "docs": []}
+        yield {"type": "telemetry", "telemetry": {
+            "context_stats": {
+                "total_chars": len(inv_text),
+                "max_chars": MAX_CONTEXT_CHARS,
+                "estimated_tokens": len(inv_text) // 4,
+                "inventory_injected": True,
+                "inventory_status": "Aktif (Envanter Görüntülendi)",
+                "citations": [],
+                "system_prompt": f"[ENVANTER DÖKÜMÜ]\n{inv_text}"
+            },
+            "search_stats": {
+                "retrieved_count": 0,
+                "best_distance": 0.0,
+                "expanded_query": user_question,
+                "query": user_question
+            }
+        }}
         yield {"type": "token", "token": inv_text}
         yield {"type": "done", "full_response": inv_text}
         return
     elif inv_cmd == 'add':
         state_manager.update_inventory_direct(inv_data)
         inv_text = state_manager.get_readable_inventory()
+        action_desc = ", ".join(f"{k}: {v}" for k, v in inv_data.items())
         res_msg = f"Envanter güncellendi. Yeni envanteriniz:\n{inv_text}"
         print(f"(*) Inventory add response generated directly:\n{res_msg}")
         yield {"type": "rag_docs", "docs": []}
+        yield {"type": "telemetry", "telemetry": {
+            "context_stats": {
+                "total_chars": len(inv_text),
+                "max_chars": MAX_CONTEXT_CHARS,
+                "estimated_tokens": len(inv_text) // 4,
+                "inventory_injected": True,
+                "inventory_status": f"Aktif (Eklendi: {action_desc})",
+                "citations": [],
+                "system_prompt": f"[ENVANTER GÜNCELLENDİ]\n{inv_text}"
+            },
+            "search_stats": {
+                "retrieved_count": 0,
+                "best_distance": 0.0,
+                "expanded_query": user_question,
+                "query": user_question
+            }
+        }}
         yield {"type": "token", "token": res_msg}
         yield {"type": "done", "full_response": res_msg}
         return
     elif inv_cmd == 'delete':
         state_manager.remove_inventory_direct(inv_data)
         inv_text = state_manager.get_readable_inventory()
+        action_desc = ", ".join(f"{k}: {v}" for k, v in inv_data.items())
         res_msg = f"Envanter güncellendi. Yeni envanteriniz:\n{inv_text}"
         print(f"(*) Inventory delete response generated directly:\n{res_msg}")
         yield {"type": "rag_docs", "docs": []}
+        yield {"type": "telemetry", "telemetry": {
+            "context_stats": {
+                "total_chars": len(inv_text),
+                "max_chars": MAX_CONTEXT_CHARS,
+                "estimated_tokens": len(inv_text) // 4,
+                "inventory_injected": True,
+                "inventory_status": f"Aktif (Silindi: {action_desc})",
+                "citations": [],
+                "system_prompt": f"[ENVANTER GÜNCELLENDİ]\n{inv_text}"
+            },
+            "search_stats": {
+                "retrieved_count": 0,
+                "best_distance": 0.0,
+                "expanded_query": user_question,
+                "query": user_question
+            }
+        }}
         yield {"type": "token", "token": res_msg}
         yield {"type": "done", "full_response": res_msg}
         return
@@ -536,6 +587,23 @@ def answer_query_generator(
         res_msg = "Envanter sıfırlandı ve tüm kayıtlar silindi."
         print(f"(*) Inventory reset response generated directly.")
         yield {"type": "rag_docs", "docs": []}
+        yield {"type": "telemetry", "telemetry": {
+            "context_stats": {
+                "total_chars": 0,
+                "max_chars": MAX_CONTEXT_CHARS,
+                "estimated_tokens": 0,
+                "inventory_injected": True,
+                "inventory_status": "Aktif (Envanter Sıfırlandı)",
+                "citations": [],
+                "system_prompt": "[ENVANTER SIFIRLANDI]"
+            },
+            "search_stats": {
+                "retrieved_count": 0,
+                "best_distance": 0.0,
+                "expanded_query": user_question,
+                "query": user_question
+            }
+        }}
         yield {"type": "token", "token": res_msg}
         yield {"type": "done", "full_response": res_msg}
         return
@@ -553,6 +621,23 @@ def answer_query_generator(
             res_msg = f"Envanterinize eklendi/güncellendi. Güncel envanteriniz:\n{inv_text}"
             print(f"(*) Free-form inventory statement updated directly:\n{res_msg}")
             yield {"type": "rag_docs", "docs": []}
+            yield {"type": "telemetry", "telemetry": {
+                "context_stats": {
+                    "total_chars": len(inv_text),
+                    "max_chars": MAX_CONTEXT_CHARS,
+                    "estimated_tokens": len(inv_text) // 4,
+                    "inventory_injected": True,
+                    "inventory_status": "Aktif (Serbest Cümle İle Envanter Güncellendi)",
+                    "citations": [],
+                    "system_prompt": f"[ENVANTER GÜNCELLENDİ]\n{inv_text}"
+                },
+                "search_stats": {
+                    "retrieved_count": 0,
+                    "best_distance": 0.0,
+                    "expanded_query": user_question,
+                    "query": user_question
+                }
+            }}
             yield {"type": "token", "token": res_msg}
             yield {"type": "done", "full_response": res_msg}
             return
@@ -614,6 +699,24 @@ def answer_query_generator(
         user_question=user_question
     )
 
+    yield {"type": "telemetry", "telemetry": {
+        "context_stats": {
+            "total_chars": len(context_text),
+            "max_chars": MAX_CONTEXT_CHARS,
+            "estimated_tokens": len(context_text) // 4,
+            "inventory_injected": inject_inv,
+            "inventory_status": "Aktif (Stok Bilgisi Prompta Eklendi)" if inject_inv else "Pasif (Sorgu stoklama ile ilgili değil)",
+            "citations": citations,
+            "system_prompt": system_prompt
+        },
+        "search_stats": {
+            "retrieved_count": len(retrieved_docs),
+            "best_distance": round(best_distance, 4),
+            "expanded_query": expanded_query,
+            "query": user_question
+        }
+    }}
+
     chat_client = model.get_chat_client()
     messages = [{"role": "system", "content": system_prompt}]
     
@@ -634,7 +737,8 @@ def answer_query_generator(
             for chunk in stream:
                 if time.time() - start_time > STREAM_TIMEOUT_SECONDS:
                     break
-                if token_count >= MAX_GENERATION_TOKENS:
+                if token_count >= MAX_GENERATION_CHARS:
+                    print("\n[!] Character limit reached.")
                     break
                 if not chunk.choices:
                     continue
@@ -644,7 +748,7 @@ def answer_query_generator(
                         break
                     print(delta, end="", flush=True)
                     raw_tokens.append(delta)
-                    token_count += max(1, len(delta) // 3)
+                    token_count += len(delta)
 
                     if _has_repetition_loop(raw_tokens):
                         print("\n[*] Repetition loop detected — terminating stream.")
@@ -660,7 +764,7 @@ def answer_query_generator(
 
         print()
         raw_response = "".join(raw_tokens)
-        visible_response = clean_llm_response(raw_response)
+        visible_response = clean_llm_response(raw_response, user_question=user_question)
         visible_response = re.sub(r'\[BITTI\].*', '', visible_response, flags=re.DOTALL).strip()
         yield {"type": "done", "full_response": visible_response}
 

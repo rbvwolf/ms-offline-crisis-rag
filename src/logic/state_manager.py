@@ -468,11 +468,12 @@ class StateManager:
 def deduplicate_paragraphs(text: str) -> str:
     """
     Removes near-duplicate paragraphs and sentences from LLM output (common in SLMs like Phi-3.5).
-    Compares word sets of each sentence to prune redundant repeats.
+    Compares word sets of each sentence to prune redundant repeats, while preserving list items.
     """
     paragraphs = text.split('\n')
     cleaned_paragraphs = []
     seen_word_sets = []
+    seen_exact = set()
 
     for para in paragraphs:
         stripped = para.strip()
@@ -480,23 +481,42 @@ def deduplicate_paragraphs(text: str) -> str:
             cleaned_paragraphs.append('')
             continue
 
+        # For list items, only perform exact string deduplication so list items aren't discarded
+        is_list_item = stripped.startswith('-') or bool(re.match(r'^\d+[\.\)]', stripped))
+        if is_list_item:
+            norm_item = re.sub(r'\s+', ' ', stripped.lower())
+            if norm_item in seen_exact:
+                continue
+            seen_exact.add(norm_item)
+            cleaned_paragraphs.append(stripped)
+            continue
+
         sentences = re.split(r'(?<=[.!?])\s+', stripped)
         valid_sentences = []
 
         for sent in sentences:
-            words = set(re.findall(r'\w+', sent.lower()))
+            s_stripped = sent.strip()
+            if not s_stripped:
+                continue
+            norm_s = re.sub(r'\s+', ' ', s_stripped.lower())
+            if norm_s in seen_exact:
+                continue
+
+            words = set(re.findall(r'\w+', s_stripped.lower()))
             if len(words) >= 4:
                 is_dup = False
                 for prev_words in seen_word_sets:
                     intersection = len(words & prev_words)
                     smaller_len = min(len(words), len(prev_words))
-                    if smaller_len > 0 and (intersection / smaller_len) >= 0.60:
+                    if smaller_len > 0 and (intersection / smaller_len) >= 0.75:
                         is_dup = True
                         break
                 if is_dup:
                     continue
                 seen_word_sets.append(words)
-            valid_sentences.append(sent)
+
+            seen_exact.add(norm_s)
+            valid_sentences.append(s_stripped)
 
         if valid_sentences:
             cleaned_paragraphs.append(' '.join(valid_sentences))
@@ -520,6 +540,30 @@ def fix_turkish_pdf_spacing(text: str) -> str:
     return text
 
 
+def _strip_quoted_echoes(text: str) -> str:
+    """
+    Strips lines where the LLM repeats a bullet point inside quotes
+    (e.g. '- "Kesinlikle panik yapmayın..."' right after '- Kesinlikle panik yapmayın...').
+    Also removes 'extrar:' or artifact headers.
+    """
+    lines = text.split('\n')
+    clean_lines = []
+    prev_clean = ""
+    for line in lines:
+        stripped = line.strip()
+        if stripped.lower() in ('extrar:', 'extra:', 'alinti:', 'alıntı:', 'cit:'):
+            continue
+        if stripped.startswith('- "') or (stripped.startswith('"') and stripped.endswith('"')):
+            unquoted = stripped.lstrip('- ').strip('"').strip()
+            if prev_clean and len(unquoted) >= 10:
+                if unquoted[:25].lower() in prev_clean.lower() or prev_clean[:25].lower() in unquoted.lower():
+                    continue
+        clean_lines.append(line)
+        if stripped:
+            prev_clean = stripped
+    return '\n'.join(clean_lines)
+
+
 def _strip_form_hallucinations(text: str) -> str:
     """
     Phi-3.5-mini sometimes generates 'X: Evet', 'X: Hayır', 'X: Kes' lines
@@ -528,33 +572,78 @@ def _strip_form_hallucinations(text: str) -> str:
     """
     lines = text.split('\n')
     clean_lines = []
-    # Patterns that signal a hallucinated form line
     _FORM_SUFFIXES = (': Evet', ': Hayır', ': Kes', ': hayır', ': evet', ': kes')
     _FORM_KEYWORDS = ('süzün:', 'yapi lan', 'yapılan', 'programini', 'programını')
     for line in lines:
         stripped = line.strip()
-        # Skip lines that end with a form-style answer
         if any(stripped.endswith(s) for s in _FORM_SUFFIXES):
             continue
-        # Skip lines containing known hallucination phrases
         if any(kw in stripped.lower() for kw in _FORM_KEYWORDS):
             continue
         clean_lines.append(line)
     return '\n'.join(clean_lines)
 
 
-def clean_llm_response(text: str) -> str:
+def clean_llm_response(text: str, user_question: str = "") -> str:
     """
     Module-level helper used by generator.py.
     Removes phi-3.5-mini artifact annotations, markdown bold asterisks,
-    fixes PDF diacritic spacing, strips form hallucinations,
-    and deduplicates repetitive paragraphs.
+    fixes PDF diacritic spacing, strips quoted echoes, nonsense hallucinations,
+    mangled Morse notations, and deduplicates repetitive paragraphs.
     Applied AFTER streaming completes, before storing in chat history.
     """
     for pattern in _ARTIFACT_PATTERNS:
         text = pattern.sub('', text)
     text = text.replace('**', '')
     text = fix_turkish_pdf_spacing(text)
+    text = _strip_quoted_echoes(text)
     text = _strip_form_hallucinations(text)
+
+    # Concatenated Turkish word fixes
+    word_fixes = {
+        r'kadartutunduğunuz': 'kadar tutunduğunuz',
+        r'yanınaçökün': 'yanına çökün',
+        r'ışıkçakması': 'ışık çakması',
+        r'mors alfabe,': 'Mors alfabesi,',
+        r'mors alfabe için': 'Mors alfabesi için',
+        r'sınır listesi': 'sinyal listesi',
+    }
+    for old_w, new_w in word_fixes.items():
+        text = re.sub(old_w, new_w, text, flags=re.IGNORECASE)
+
+    # Nonsense hallucination filtering
+    nonsense_patterns = [
+        r'yalanları söyler',
+        r'kötülük için yalanları',
+        r'Hazırlık durumunu söyledikçe',
+        r'sıkıca bir durumda kalın',
+        r'Amatörler, bu m',
+    ]
+
+    lines = text.split('\n')
+    clean_lines = []
+    q_lower = user_question.lower() if user_question else ""
+    is_mors = any(k in q_lower for k in ("mors", "sos", "sinyal", "telsiz"))
+
+    for line in lines:
+        stripped = line.strip()
+        # Skip hallucinated nonsense lines
+        if any(re.search(p, stripped, re.IGNORECASE) for p in nonsense_patterns):
+            continue
+        # Skip trailing SOS ritmi lines on non-Morse queries
+        if not is_mors and re.search(r'\(.*SOS.*3 kısa.*\)', stripped, re.IGNORECASE):
+            continue
+        
+        # Correct mangled Morse notation if this is a Morse query
+        if is_mors:
+            stripped = re.sub(r'^[-\s–—]*S\s*\(.*?\)', '- S = . . . (3 Kısa Sinyal)', stripped, flags=re.IGNORECASE)
+            stripped = re.sub(r'^[-\s–—]*O\s*\(.*?\)', '- O = - - - (3 Uzun Sinyal)', stripped, flags=re.IGNORECASE)
+            stripped = re.sub(r'^[-\s–—]*M\s*\(.*?\)', '- M = - - (2 Uzun Sinyal)', stripped, flags=re.IGNORECASE)
+            stripped = re.sub(r'^[-\s–—]*R\s*\(.*?\)', '- R = . - . (Kısa Uzun Kısa)', stripped, flags=re.IGNORECASE)
+            stripped = re.sub(r'^[-\s–—]*SOS\s*\(.*?\)', '- SOS = . . .  - - -  . . . (3 Kısa, 3 Uzun, 3 Kısa Sinyal)', stripped, flags=re.IGNORECASE)
+
+        clean_lines.append(stripped)
+
+    text = '\n'.join(clean_lines)
     text = deduplicate_paragraphs(text)
     return text.strip()

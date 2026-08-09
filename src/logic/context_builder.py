@@ -104,23 +104,28 @@ def build_context(retrieved_docs: list) -> tuple[str, list]:
         chunks.append(cleaned)
         total_chars += len(cleaned)
 
-        # Citation label — always shown for both TXT and PDF sources
-        if source_file:
-            name = os.path.splitext(source_file)[0]
-            if len(name) > 45:
-                name = name[:45] + "..."
-            if source_type == 'txt':
-                label = f"[TXT] {name}"
-            elif page_number >= 0:
-                label = f"[PDF] {name} (s.{page_number + 1})"
-            else:
-                label = f"[PDF] {name}"
-            if label not in citations:
-                citations.append(label)
-        elif source_type == 'pdf':
-            # PDF chunk without a recorded filename — still note it as a PDF source
-            label = "[PDF] Bilinmeyen kaynak"
-            if label not in citations:
-                citations.append(label)
+        # Citation metadata object — contains source, page, type, distance, and text
+        src_name = source_file or "rehber.txt"
+        name = os.path.splitext(src_name)[0]
+        if len(name) > 45:
+            name = name[:45] + "..."
+        
+        if source_type == 'txt':
+            label = f"[TXT] {name}"
+        elif page_number >= 0:
+            label = f"[PDF] {name} (s.{page_number + 1})"
+        else:
+            label = f"[PDF] {name}"
+
+        # Avoid duplicate citations for the exact same source & page
+        if not any(c['source'] == src_name and c.get('page') == page_number for c in citations):
+            citations.append({
+                "source": src_name,
+                "label": label,
+                "page": page_number + 1 if page_number >= 0 else None,
+                "source_type": source_type,
+                "text": cleaned,
+                "distance": round(float(distance), 4)
+            })
 
     return "\n\n".join(chunks), citations

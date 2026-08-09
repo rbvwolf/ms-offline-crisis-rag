@@ -337,21 +337,10 @@ def _enrich_results(fused: list, vector_dist_map: dict, fts_results: list, db: s
             file_counts[fname] = file_counts.get(fname, 0) + 1
     results = filtered
 
-    # Separate TXT and PDF candidates
-    txt_results = [r for r in results if r[4] == 'txt']
-    pdf_results = [r for r in results if r[4] == 'pdf']
-
-    txt_results.sort(key=lambda r: r[1])
-    pdf_results.sort(key=lambda r: r[1])
-
-    final_results = []
-    # 1. Take curated TXT chunks first (up to top_k slots)
-    final_results.extend(txt_results[:top_k])
-
-    # 2. Only fill remaining slots with PDF chunks if we need more context
-    if len(final_results) < top_k:
-        remaining = top_k - len(final_results)
-        final_results.extend(pdf_results[:remaining])
+    # Prioritize hand-curated TXT chunks (0.15 distance boost) for relevant queries,
+    # ensuring hand-curated protocols rank #1 above generic PDFs.
+    results.sort(key=lambda r: r[1] - (0.15 if r[4] == 'txt' and r[1] <= 0.78 else 0.0))
+    final_results = results[:top_k]
 
     return final_results
 
@@ -399,7 +388,7 @@ def retrieve_content(
             text, dist, src, pg, *rest = row
             st = rest[0] if rest else 'pdf'
             label = f"{src}:p{pg}" if src else "?"
-            snippet = text[:60].replace('\n', ' ')
+            snippet = text[:60].replace('\n', ' ').encode('ascii', 'replace').decode('ascii')
             print(f"    dist={dist:.4f} type={st} [{label}] | {snippet!r}")
 
         return results

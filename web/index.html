@@ -333,52 +333,92 @@
       </div>
 
       <!-- Panel nav -->
-      <nav style="display:flex;flex-direction:column;gap:0.25rem;margin-bottom:1.5rem;">
-        <button class="nav-btn active" style="border-left:3px solid var(--accent-tertiary);color:var(--accent-tertiary);">
+      <nav id="sidebarTabsNav" style="display:flex;flex-direction:column;gap:0.25rem;margin-bottom:1.25rem;">
+        <button class="nav-btn active" id="btnTabVector" data-target="panelVector" style="border-left:3px solid var(--accent-tertiary);color:var(--accent-tertiary);">
           <span class="material-symbols-outlined" style="font-size:18px;">hub</span> Vekt&#246;r Mesafeleri
         </button>
-        <button class="nav-btn">
+        <button class="nav-btn" id="btnTabCitations" data-target="panelCitations">
           <span class="material-symbols-outlined" style="font-size:18px;">find_replace</span> Kaynak Al&#305;nt&#305;lar&#305;
         </button>
-        <button class="nav-btn">
+        <button class="nav-btn" id="btnTabContext" data-target="panelContext">
           <span class="material-symbols-outlined" style="font-size:18px;">layers</span> Ba&#287;lam Penceresi
         </button>
-        <button class="nav-btn">
+        <button class="nav-btn" id="btnTabDebug" data-target="panelDebug">
           <span class="material-symbols-outlined" style="font-size:18px;">bug_report</span> Hata Ay&#305;klama
         </button>
       </nav>
 
-      <!-- Chunk'lar -->
-      <div style="font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-muted);margin-bottom:0.5rem;padding-bottom:0.375rem;border-bottom:1px solid var(--border-card);">
-        GET&#304;R&#304;LEN PAR&#199;ALAR
+      <!-- PANELS CONTAINER -->
+      <!-- Panel 1: Vektör Mesafeleri -->
+      <div id="panelVector" class="sidebar-panel" style="display:flex;flex-direction:column;flex:1;">
+        <div style="font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-muted);margin-bottom:0.5rem;padding-bottom:0.375rem;border-bottom:1px solid var(--border-card);">
+          GET&#304;R&#304;LEN PAR&#199;ALAR
+        </div>
+        <div id="ragCards" style="display:flex;flex-direction:column;gap:0.75rem;flex:1;">
+          <p style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-muted);">Henüz sorgu yapılmadı.</p>
+        </div>
       </div>
 
-      <div id="ragCards" style="display:flex;flex-direction:column;gap:0.75rem;flex:1;">
-        <div class="citation-card modern-only">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;">
-            <span style="font-family:var(--font-mono);font-size:0.625rem;padding:0.125rem 0.375rem;background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.25rem;color:var(--text-muted);">su_aritma_v2.pdf</span>
-            <span style="font-family:var(--font-mono);font-size:0.625rem;color:var(--accent-tertiary);">dist: 0.12</span>
-          </div>
-          <p style="font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-secondary);line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;">
-            "...Bio-kum filtreleri &#252;&#231; ana katmandan olu&#351;ur. En altta &#231;ak&#305;l tabakas&#305; bulunur..."
-          </p>
+      <!-- Panel 2: Kaynak Alıntıları -->
+      <div id="panelCitations" class="sidebar-panel" style="display:none;flex-direction:column;flex:1;">
+        <div style="font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-muted);margin-bottom:0.5rem;padding-bottom:0.375rem;border-bottom:1px solid var(--border-card);">
+          KAYNAKÇA VE REFERANSLAR
         </div>
-        <div class="citation-card modern-only">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;">
-            <span style="font-family:var(--font-mono);font-size:0.625rem;padding:0.125rem 0.375rem;background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.25rem;color:var(--text-muted);">hayatta_kalma_rehberi.txt</span>
-            <span style="font-family:var(--font-mono);font-size:0.625rem;color:var(--accent-tertiary);">dist: 0.28</span>
-          </div>
-          <p style="font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-secondary);line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;">
-            "...Filtrelenmi&#351; su berrak g&#246;r&#252;nse bile mikroorganizmalar i&#231;erebilir..."
-          </p>
+        <div id="citationsList" style="display:flex;flex-direction:column;gap:0.75rem;flex:1;">
+          <p style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-muted);">Henüz alıntı bulunmuyor.</p>
         </div>
-        <!-- CLI terminal ciktisi -->
-        <div class="cli-only" style="font-family:var(--font-mono);font-size:0.6875rem;color:var(--accent-primary);display:flex;flex-direction:column;gap:0.375rem;padding-top:0.5rem;">
-          <div>&gt; VEKTORLER GETIRILIYOR... TAMAM</div>
-          <div>&gt; PARCA 1 [su_aritma_v2.pdf] UZAKLIK: 0.12</div>
-          <div>&gt; PARCA 2 [hayatta_kalma_rehberi.txt] UZAKLIK: 0.28</div>
-          <div>&gt; BAGLAM PENCERESI: 1024/8192 TOKEN</div>
-          <div>&gt; GIRDI BEKLENIYOR_</div>
+      </div>
+
+      <!-- Panel 3: Bağlam Penceresi -->
+      <div id="panelContext" class="sidebar-panel" style="display:none;flex-direction:column;gap:1rem;flex:1;">
+        <div style="font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-muted);padding-bottom:0.375rem;border-bottom:1px solid var(--border-card);">
+          BAĞLAM KAPASİTESİ
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.375rem;">
+            <span>Karakter Doluluğu</span>
+            <span id="ctxCapacityText">0 / 16,000</span>
+          </div>
+          <div style="width:100%;height:0.5rem;background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.25rem;overflow:hidden;">
+            <div id="ctxProgressBar" style="width:0%;height:100%;background:var(--accent-primary);transition:width 0.3s;"></div>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--border-card);padding-top:0.75rem;">
+          <div style="font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-muted);margin-bottom:0.375rem;">ENVANTER ENJEKSİYONU</div>
+          <div id="ctxInventoryInjected" style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-secondary);">
+            Pasif (Sorgu stokla ilgili değil)
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--border-card);padding-top:0.75rem;">
+          <button id="toggleRawPromptBtn" style="width:100%;padding:0.375rem 0.5rem;background:var(--bg-card);border:1px solid var(--border-card);border-radius:0.25rem;color:var(--text-secondary);font-family:var(--font-mono);font-size:0.6875rem;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center;">
+            <span>Ham Prompt Görüntüle</span>
+            <span class="material-symbols-outlined" style="font-size:16px;">expand_more</span>
+          </button>
+          <pre id="rawPromptBox" style="display:none;margin-top:0.5rem;padding:0.5rem;background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.25rem;font-family:var(--font-mono);font-size:0.625rem;color:var(--text-muted);white-space:pre-wrap;max-height:12rem;overflow-y:auto;"></pre>
+        </div>
+      </div>
+
+      <!-- Panel 4: Hata Ayıklama (Debug) -->
+      <div id="panelDebug" class="sidebar-panel" style="display:none;flex-direction:column;gap:0.75rem;flex:1;">
+        <div style="font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-muted);padding-bottom:0.375rem;border-bottom:1px solid var(--border-card);">
+          CANLI KONSOL VE TELEMETRİ
+        </div>
+        <div id="debugMetrics" style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-family:var(--font-mono);font-size:0.6875rem;">
+          <div style="padding:0.375rem;background:var(--bg-card);border:1px solid var(--border-card);border-radius:0.25rem;">
+            <div style="color:var(--text-muted);font-size:0.625rem;">RRF Arama</div>
+            <div id="metricSearchTime" style="color:var(--accent-primary);font-weight:700;">-</div>
+          </div>
+          <div style="padding:0.375rem;background:var(--bg-card);border:1px solid var(--border-card);border-radius:0.25rem;">
+            <div style="color:var(--text-muted);font-size:0.625rem;">En İyi Dist</div>
+            <div id="metricBestDist" style="color:var(--accent-secondary);font-weight:700;">-</div>
+          </div>
+        </div>
+
+        <div style="font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-muted);margin-top:0.25rem;">Sistem Logları</div>
+        <div id="debugConsoleLog" style="flex:1;background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.25rem;padding:0.5rem;font-family:var(--font-mono);font-size:0.625rem;color:var(--accent-primary);overflow-y:auto;max-height:16rem;display:flex;flex-direction:column;gap:0.25rem;">
+          <div>&gt; CRISIS RAG Telemetri Sistemi Hazır.</div>
         </div>
       </div>
 
@@ -386,32 +426,35 @@
       <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border-card);">
         <div style="font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-muted);margin-bottom:0.5rem;">Y&#220;KL&#220; MOD&#220;LLER</div>
         <div id="loadedModulesList" style="display:flex;flex-direction:column;gap:0.375rem;">
-          <div style="display:flex;align-items:center;gap:0.5rem;font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-secondary);">
-            <span class="modern-only" style="width:0.4rem;height:0.4rem;border-radius:50%;background:var(--accent-secondary);flex-shrink:0;"></span>
-            <span class="cli-only" style="color:var(--accent-primary);">[*]</span>
-            deprem_protokolu.txt
-          </div>
-          <div style="display:flex;align-items:center;gap:0.5rem;font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-secondary);">
-            <span class="modern-only" style="width:0.4rem;height:0.4rem;border-radius:50%;background:var(--accent-secondary);flex-shrink:0;"></span>
-            <span class="cli-only" style="color:var(--accent-primary);">[*]</span>
-            yangin_mudahale.txt
-          </div>
-          <div style="display:flex;align-items:center;gap:0.5rem;font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-secondary);">
-            <span class="modern-only" style="width:0.4rem;height:0.4rem;border-radius:50%;background:var(--accent-secondary);flex-shrink:0;"></span>
-            <span class="cli-only" style="color:var(--accent-primary);">[*]</span>
-            11_telsiz_pmr_ve_mors_alfabesi.txt
-          </div>
-          <div style="display:flex;align-items:center;gap:0.5rem;font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-secondary);">
-            <span class="modern-only" style="width:0.4rem;height:0.4rem;border-radius:50%;background:var(--accent-secondary);flex-shrink:0;"></span>
-            <span class="cli-only" style="color:var(--accent-primary);">[*]</span>
-            09_tibbi_triyaj.txt
-          </div>
+          <p style="font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-muted);">Sorgu atıldığında ilgili modüller burada görünecektir.</p>
         </div>
       </div>
     </aside>
 
   </div><!-- /#columns -->
 </div><!-- /#app -->
+
+<!-- CITATION DETAIL MODAL -->
+<div id="citationModal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:1.5rem;">
+  <div style="max-width:40rem;width:100%;background:var(--bg-card);border:1px solid var(--border-main);border-radius:var(--rounded-card);padding:1.5rem;box-shadow:var(--shadow-card);display:flex;flex-direction:column;gap:1rem;max-height:85vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border-card);padding-bottom:0.75rem;">
+      <div style="display:flex;align-items:center;gap:0.5rem;">
+        <span class="material-symbols-outlined" style="color:var(--accent-primary);font-size:20px;">find_in_page</span>
+        <h3 id="citationModalTitle" style="font-family:var(--font-sans);font-weight:700;font-size:0.9375rem;color:var(--text-primary);">Kaynak Alıntısı</h3>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.5rem;">
+        <button id="viewChunkTextBtn" style="display:none;padding:0.25rem 0.625rem;background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.25rem;color:var(--accent-primary);font-family:var(--font-mono);font-size:0.75rem;cursor:pointer;align-items:center;gap:0.25rem;">
+          <span class="material-symbols-outlined" style="font-size:14px;">find_in_page</span> Parçaya (Chunk) Dön
+        </button>
+        <button id="viewFullFileBtn" style="padding:0.25rem 0.625rem;background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.25rem;color:var(--accent-secondary);font-family:var(--font-mono);font-size:0.75rem;cursor:pointer;display:flex;align-items:center;gap:0.25rem;">
+          <span class="material-symbols-outlined" style="font-size:14px;">description</span> Tüm Dosyayı Oku
+        </button>
+        <button id="closeCitationModalBtn" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;">✕</button>
+      </div>
+    </div>
+    <div id="citationModalContent" style="font-family:var(--font-mono);font-size:0.8125rem;color:var(--text-secondary);line-height:1.6;white-space:pre-wrap;background:var(--bg-canvas);padding:1rem;border:1px solid var(--border-card);border-radius:0.375rem;max-height:60vh;overflow-y:auto;"></div>
+  </div>
+</div>
 
 <!-- CLEAR CONFIRM MODAL -->
 <div id="clearModal">

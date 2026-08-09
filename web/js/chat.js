@@ -209,6 +209,8 @@ function sendMessage(text) {
               const parsed = JSON.parse(dataStr);
               if (parsed.rag_docs) {
                 renderRagPanel(parsed.rag_docs);
+              } else if (parsed.telemetry) {
+                renderTelemetry(parsed.telemetry);
               } else if (parsed.token) {
                 fullResponse += parsed.token;
                 const cleanText = cleanStreamOutput(fullResponse);
@@ -245,8 +247,17 @@ function cleanStreamOutput(text) {
   let cleaned = text;
   // Remove [BITTI] tag and trailing garbage
   cleaned = cleaned.replace(/\[BITTI\].*$/gis, '');
-  // Remove prompt leak headers & hallucinated preamble prefixes
-  cleaned = cleaned.replace(/^(?:Programını\s+kullanmaktadır:?|Programı:?|Yanı?t\s+Formatı?\s+ve\s+Kurallı?:?|Mors\s+alfabesi\s+veya\s+sinyal\s+sorularıyla?:?.*|Şimdi\s+Yanı?t?:?|Yanı?t?:?)\s*/gim, '');
+  // Remove exact prompt leak headers & hallucinated preamble prefixes ONLY
+  cleaned = cleaned.replace(/^(?:Programını\s+kullanmaktadır:?|Programı:?|Yanıt\s+Formatı:?|Şimdi\s+Yanıt\s+Verin:?)\s*/gim, '');
+  // Fix concatenated common Turkish words
+  cleaned = cleaned.replace(/kadartutunduğunuz/gi, 'kadar tutunduğunuz');
+  cleaned = cleaned.replace(/yanınaçökün/gi, 'yanına çökün');
+  cleaned = cleaned.replace(/ışıkçakması/gi, 'ışık çakması');
+  // Strip nonsense lines
+  cleaned = cleaned.replace(/.*yalanları söyler.*/gi, '');
+  cleaned = cleaned.replace(/.*kötülük için yalanları.*/gi, '');
+  cleaned = cleaned.replace(/.*Hazırlık durumunu söyledikçe.*/gi, '');
+  cleaned = cleaned.replace(/.*Amatörler, bu m.*/gi, '');
   // Strip markdown bold/italic markers that the model emits despite being told not to
   cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, '$1');  // **bold** → plain
   cleaned = cleaned.replace(/\*([^*]+)\*/g, '$1');       // *italic* → plain
@@ -257,6 +268,116 @@ function cleanStreamOutput(text) {
 
 function escapeHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function initRightSidebarTabs() {
+  const nav = document.getElementById('sidebarTabsNav');
+  if (!nav) return;
+
+  const buttons = nav.querySelectorAll('button[data-target]');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      // Deactivate all buttons
+      buttons.forEach(b => {
+        b.classList.remove('active');
+        b.style.borderLeft = 'none';
+        b.style.color = '';
+      });
+
+      // Activate clicked button
+      btn.classList.add('active');
+      btn.style.borderLeft = '3px solid var(--accent-tertiary)';
+      btn.style.color = 'var(--accent-tertiary)';
+
+      // Hide all panels
+      const targetId = btn.getAttribute('data-target');
+      document.querySelectorAll('.sidebar-panel').forEach(panel => {
+        panel.style.display = 'none';
+      });
+
+      // Show target panel
+      const targetPanel = document.getElementById(targetId);
+      if (targetPanel) {
+        targetPanel.style.display = 'flex';
+      }
+    });
+  });
+
+  // Raw Prompt toggle button
+  const togglePromptBtn = document.getElementById('toggleRawPromptBtn');
+  const rawPromptBox = document.getElementById('rawPromptBox');
+  if (togglePromptBtn && rawPromptBox) {
+    togglePromptBtn.addEventListener('click', () => {
+      const isHidden = rawPromptBox.style.display === 'none';
+      rawPromptBox.style.display = isHidden ? 'block' : 'none';
+    });
+  }
+
+  // Citation Detail Modal close button
+  const closeCitationBtn = document.getElementById('closeCitationModalBtn');
+  const citationModal = document.getElementById('citationModal');
+  if (closeCitationBtn && citationModal) {
+    closeCitationBtn.addEventListener('click', () => {
+      citationModal.style.display = 'none';
+    });
+  }
+
+  // View Full File button inside modal
+  const viewFullFileBtn = document.getElementById('viewFullFileBtn');
+  const viewChunkTextBtn = document.getElementById('viewChunkTextBtn');
+  const contentEl = document.getElementById('citationModalContent');
+
+  if (viewFullFileBtn) {
+    viewFullFileBtn.addEventListener('click', () => {
+      if (!currentActiveFilename) return;
+      if (contentEl) contentEl.textContent = 'Tüm dosya yükleniyor...';
+      fetch(`/api/file/${encodeURIComponent(currentActiveFilename)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.content && contentEl) {
+            contentEl.textContent = `=== [ DOSYA İÇERİĞİ: ${data.filename} ] ===\n\n${data.content}`;
+            if (viewFullFileBtn) viewFullFileBtn.style.display = 'none';
+            if (viewChunkTextBtn) viewChunkTextBtn.style.display = 'flex';
+          } else if (contentEl) {
+            contentEl.textContent = `Hata: ${data.error || 'Dosya okunamadı'}`;
+          }
+        })
+        .catch(err => {
+          if (contentEl) contentEl.textContent = `İletişim Hatası: ${err.message}`;
+        });
+    });
+  }
+
+  if (viewChunkTextBtn) {
+    viewChunkTextBtn.addEventListener('click', () => {
+      if (contentEl) contentEl.textContent = currentActiveChunkText;
+      if (viewChunkTextBtn) viewChunkTextBtn.style.display = 'none';
+      if (viewFullFileBtn) viewFullFileBtn.style.display = 'flex';
+    });
+  }
+}
+
+let currentActiveFilename = '';
+let currentActiveChunkText = '';
+
+function openCitationModal(title, text, filename) {
+  const modal = document.getElementById('citationModal');
+  const titleEl = document.getElementById('citationModalTitle');
+  const contentEl = document.getElementById('citationModalContent');
+  const fullFileBtn = document.getElementById('viewFullFileBtn');
+  const chunkBtn = document.getElementById('viewChunkTextBtn');
+
+  if (modal && titleEl && contentEl) {
+    currentActiveFilename = filename || title.split(' ')[0];
+    currentActiveChunkText = text || 'Henüz kaynak alıntısı getirilmedi. Lütfen bir soru sorun.';
+    titleEl.textContent = title;
+    contentEl.textContent = currentActiveChunkText;
+
+    if (fullFileBtn) fullFileBtn.style.display = 'flex';
+    if (chunkBtn) chunkBtn.style.display = 'none';
+
+    modal.style.display = 'flex';
+  }
 }
 
 function initQuickChips() {
@@ -284,6 +405,7 @@ function initQuickChips() {
 document.addEventListener('DOMContentLoaded', () => {
   initQuickChips();
   renderSavedHistory();
+  initRightSidebarTabs();
 
   const sendBtn = document.getElementById('sendBtn');
   const input   = document.getElementById('cliInput');
@@ -328,15 +450,28 @@ function renderRagPanel(chunks) {
 
     const card = document.createElement('div');
     card.className = 'citation-card modern-only';
+    card.style.cursor = 'pointer';
+    card.title = 'Tam metni görüntülemek için tıklayın';
+
+    // Distance badge color
+    let badgeColor = 'var(--accent-tertiary)';
+    if (chunkObj.distance <= 0.65) badgeColor = 'var(--accent-secondary)';
+    else if (chunkObj.distance > 0.80) badgeColor = 'var(--text-danger)';
+
     card.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;gap:0.5rem;overflow:hidden;">
         <span style="font-family:var(--font-mono);font-size:0.625rem;padding:0.125rem 0.375rem;background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.25rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:65%;" title="${escapeHtml(file)}">${escapeHtml(file)}</span>
-        <span style="font-family:var(--font-mono);font-size:0.625rem;color:var(--accent-tertiary);flex-shrink:0;white-space:nowrap;">dist: ${dist}</span>
+        <span style="font-family:var(--font-mono);font-size:0.625rem;color:${badgeColor};flex-shrink:0;white-space:nowrap;">dist: ${dist}</span>
       </div>
       <p style="font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-secondary);line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;">
         "${escapeHtml(text.slice(0, 200))}..."
       </p>
     `;
+
+    card.addEventListener('click', () => {
+      openCitationModal(`${file} (Mesafe: ${dist})`, text, file);
+    });
+
     container.appendChild(card);
   });
 
@@ -354,6 +489,102 @@ function renderRagPanel(chunks) {
       `;
       modulesList.appendChild(item);
     });
+  }
+}
+
+function renderTelemetry(telemetry) {
+  if (!telemetry) return;
+
+  const ctxStats = telemetry.context_stats;
+  const searchStats = telemetry.search_stats;
+
+  // 1. Update Bağlam Penceresi
+  if (ctxStats) {
+    const totalChars = ctxStats.total_chars || 0;
+    const totalCapacity = 16000; // Total LLM window capacity (4,096 tokens)
+    const pct = Math.min(100, Math.round((totalChars / totalCapacity) * 100));
+    const estTokens = ctxStats.estimated_tokens || Math.round(totalChars / 4);
+
+    const capacityText = document.getElementById('ctxCapacityText');
+    if (capacityText) {
+      capacityText.textContent = `${totalChars.toLocaleString()} / 16,000 kr (%${pct}) [~${estTokens} / 4,096 token]`;
+    }
+
+    const progressBar = document.getElementById('ctxProgressBar');
+    if (progressBar) {
+      progressBar.style.width = `${pct}%`;
+      progressBar.style.background = pct >= 95 ? 'var(--accent-red)' : 'var(--accent-primary)';
+    }
+
+    const invInjected = document.getElementById('ctxInventoryInjected');
+    if (invInjected) {
+      invInjected.textContent = ctxStats.inventory_status || (
+        ctxStats.inventory_injected
+          ? 'Aktif (Kullanıcı stok bilgisi prompta eklendi)'
+          : 'Pasif (Sorgu stoklama ile ilgili değil)'
+      );
+      invInjected.style.color = ctxStats.inventory_injected ? 'var(--accent-secondary)' : 'var(--text-secondary)';
+    }
+
+    const rawPromptBox = document.getElementById('rawPromptBox');
+    if (rawPromptBox && ctxStats.system_prompt) {
+      rawPromptBox.textContent = ctxStats.system_prompt;
+    }
+  }
+
+  // 2. Update Kaynak Alıntıları Tab
+  if (ctxStats && ctxStats.citations) {
+    const citationsList = document.getElementById('citationsList');
+    if (citationsList) {
+      citationsList.innerHTML = '';
+      if (ctxStats.citations.length === 0) {
+        citationsList.innerHTML = '<p style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-muted);">Alıntı yapılmadı veya envanter komutu doğrudan çalıştırıldı.</p>';
+      } else {
+        ctxStats.citations.forEach((cit, idx) => {
+          const card = document.createElement('div');
+          card.className = 'citation-card modern-only';
+          card.style.cssText = 'padding:0.625rem;background:var(--bg-card);border:1px solid var(--border-card);border-radius:0.375rem;cursor:pointer;';
+          const srcLabel = typeof cit === 'string' ? cit : (cit.label || cit.source || 'Rehber');
+          const srcText = typeof cit === 'string' ? '' : (cit.text || '');
+          const srcFile = typeof cit === 'string' ? cit : (cit.source || '');
+
+          card.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.375rem;">
+              <span style="font-family:var(--font-mono);font-size:0.6875rem;font-weight:600;color:var(--accent-primary);">${escapeHtml(srcLabel)}</span>
+            </div>
+            <p style="font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-secondary);line-height:1.4;">
+              "${escapeHtml(srcText ? srcText.slice(0, 150) + '...' : 'Tam metni görüntülemek için tıklayın.')}"
+            </p>
+          `;
+          card.addEventListener('click', () => {
+            openCitationModal(srcLabel, srcText || 'Alıntı parçası metni.', srcFile);
+          });
+          citationsList.appendChild(card);
+        });
+      }
+    }
+  }
+
+  // 3. Update Hata Ayıklama (Debug) Tab
+  if (searchStats) {
+    const metricBestDist = document.getElementById('metricBestDist');
+    if (metricBestDist && searchStats.best_distance !== undefined) {
+      metricBestDist.textContent = searchStats.best_distance.toFixed(2);
+    }
+    const metricSearchTime = document.getElementById('metricSearchTime');
+    if (metricSearchTime) {
+      metricSearchTime.textContent = `${searchStats.retrieved_count || 0} chunk`;
+    }
+
+    const consoleLog = document.getElementById('debugConsoleLog');
+    if (consoleLog) {
+      const timeStr = new Date().toLocaleTimeString();
+      const queryName = searchStats.query || searchStats.expanded_query || 'Sorgu';
+      const line = document.createElement('div');
+      line.textContent = `[${timeStr}] RRF Arama ("${queryName}"): Top ${searchStats.retrieved_count} chunk seçildi (En iyi dist: ${searchStats.best_distance})`;
+      consoleLog.appendChild(line);
+      consoleLog.scrollTop = consoleLog.scrollHeight;
+    }
   }
 }
 

@@ -14,6 +14,8 @@ Public API:
 # ---------------------------------------------------------------------------
 _QUERY_EXPANSIONS = {
     "deprem":       "deprem anında hayatta kalma çök kapan tutun enkaz sarsıntı",
+    "sarsinti":     "deprem anında hayatta kalma çök kapan tutun enkaz sarsıntı",
+    "sarsıntı":     "deprem anında hayatta kalma çök kapan tutun enkaz sarsıntı",
     "yangin":       "yangın söndürme kaçış tahliye duman",
     "su":           "su arıtma çökeltme filtreleme kaynatma içme",
     "ilk yardim":   "ilk yardım acil müdahale yaralı",
@@ -22,7 +24,7 @@ _QUERY_EXPANSIONS = {
     "kirik":        "kırık kol bacak atel sabitleme müdahale",
     "yanik":        "yanık deri soğutma sarma müdahale",
     "kanama":       "kanama yara baskı uygulama durdurma",
-    "enkaz":        "enkaz altında nefes bekleme kurtarma sinyal",
+    "enkaz":        "enkaz altında kalma çök kapan tutun nefes kontrolü hayatta kalma deprem",
     "rasyon":       "rasyon yiyecek su günlük plan hesaplama",
     "barinak":      "barınak sığınak çadır kurma afet",
     "telsiz":       "telsiz haberleşme frekans PMR acil iletişim",
@@ -48,20 +50,22 @@ def normalize_for_matching(s: str) -> str:
 
 def expand_query(query: str) -> str:
     """
-    If the query is 1-3 words and matches a known keyword (ASCII-normalized),
-    appends relevant domain terms to improve retrieval quality.
-    Longer queries are returned unchanged.
+    Appends domain expansion terms if the query contains any emergency keyword
+    (ASCII-normalized), regardless of sentence length.
     """
     q = query.strip().lower()
-    if len(q.split()) > 3:
-        return query
-
     q_norm = normalize_for_matching(q)
 
+    expansions_added = []
     for keyword, expansion in _QUERY_EXPANSIONS.items():
         if keyword in q_norm:
-            expanded = f"{query} {expansion}"
-            print(f"(*) Short query expanded: '{query}' -> '{expanded[:60]}...'")
-            return expanded
+            expansions_added.append(expansion)
+
+    if expansions_added:
+        # Use unique terms only
+        combined_exp = " ".join(dict.fromkeys(" ".join(expansions_added).split()))
+        expanded = f"{query} {combined_exp}"
+        print(f"(*) Query expanded: '{query}' -> '{expanded[:75]}...'")
+        return expanded
 
     return query

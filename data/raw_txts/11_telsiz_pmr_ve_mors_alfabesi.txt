@@ -1,23 +1,32 @@
-MORS ALFABESİ VE ACİL SİNYALİZASYON:
+AFET VE KRİZ DURUMLARINDA İLETİŞİM VE SİNYALİZASYON REHBERİ
 
-Mors alfabesi, kısa (nokta "." = 1 birim) ve uzun (çizgi "-" = 3 birim) sinyallerden oluşan evrensel bir kodlama sistemidir. Elektrik, ses, ışık veya düdük gibi tek bit'lik bir kanalda mesaj iletmek için kullanılır.
+1. MORS ALFABESİ VE ACİL DURUM SİNYALİZASYONU
+Mors alfabesi, internet veya telefon şebekelerinin bulunmadığı afet ortamlarında elektrik, ses veya ışık yoluyla mesaj iletmeyi sağlayan evrensel bir sinyalizasyon yöntemidir.
 
-SOS ACİL ÇAĞRISI:
-SOS, uluslararası kabul görmüş acil yardım sinyalidir: üç kısa, üç uzun, üç kısa: "... --- ..."
-SOS'u fener, ayna yansıması, düdük veya telsizle verin; aralarında 1 dakika bekleyerek tekrarlayın.
+Sinyal Yapısı:
+- Kısa Sinyal (Nokta '.'): 1 birim süre (örneğin 1 saniyelik ışık çakması veya düdük sesi).
+- Uzun Sinyal (Çizgi '-'): 3 birim süre (örneğin 3 saniyelik ışık çakması veya düdük sesi).
+- Sinyal Aralığı: Harfler arasında 3 birim, kelimeler arasında 7 birim beklenir.
 
-ACİL DURUM KULLANIMI:
-- Işık sinyali: El feneri veya araç farıyla nokta = kısa flaş, çizgi = uzun flaş.
-- Ses sinyali: Düdük veya borazan ile nokta = kısa, çizgi = uzun ses.
-- Taş veya dal: Yüksek bir yere görünür biçimde "SOS" harflerini taş veya dallarla dizin.
-- K (-.-) sinyali: "Tamam / Anlaşıldı" anlamına gelir, kurtarma ekiplerinin yanıtı budur.
+Temel Mors Harfleri ve Acil Durum İşaretleri:
+- S = . . . (3 Kısa Sinyal)
+- O = - - - (3 Uzun Sinyal)
+- M = - - (2 Uzun Sinyal)
+- R = . - . (Kısa Uzun Kısa)
+- SOS Acil Yardım Sinyali: . . .  - - -  . . . (3 Kısa, 3 Uzun, 3 Kısa Sinyal)
 
-TEMEL SİNYAL KURALLARI:
-- Harfler arasında 3 birim, kelimeler arasında 7 birim bekleme yapılır.
-- Telsiz yoksa bile taş veya duman sinyali ile SOS verilebilir; önemli olan ritmik tekrardır.
+SOS Acil Çağrı Protokolü:
+- Uluslararası SOS acil yardım sinyali: . . . - - - . . . (3 kısa, 3 uzun, 3 kısa sinyal).
+- Uygulama: Sinyal verildikten sonra 1 dakika beklenir ve yardım ulaşana kadar ritmik olarak tekrarlanır.
+- Sesle Sinyal: Düdük veya borazan ile 3 kısa, 3 uzun, 3 kısa düdük çalınır.
+- Işıkla Sinyal: El feneri veya araç farıyla 3 kısa flaş, 3 uzun flaş, 3 kısa flaş yapılır.
+- Görsel Sinyal: Enkaz üstüne veya açık alana taş, dal veya kıyafetler dizilerek büyük harflerle SOS yazılır.
 
-PMR TELSİZ KULLANIMI (LİSANSSIZ):
-- PMR 446 telsizler şebeke gerektirmeyen en güvenilir afet iletişim aracıdır.
-- Konuşmak için PTT mandalına bas, bitince hemen bırak.
-- Kanal 1 (446.00625 MHz): Türkiye acil durum ve arama kurtarma kanalı.
-- Batarya tasarrufu: cihazı saat başlarında 5 dakika aç, dinle, kapat.
+
+2. PMR 446 TELSİZ İLETİŞİM PROTOKOLÜ
+PMR 446 telsizler, baz istasyonuna ihtiyaç duymadan cihazdan cihaza doğrudan haberleşme sağlayan lisanssız acil durum telsizleridir.
+
+Kullanım Kuralları:
+- Acil Durum Kanalı: Kanal 1 (446.00625 MHz), Türkiye genelinde afet ve arama-kurtarma öncelikli iletişim kanalıdır.
+- Konuşma Disiplini: PTT mandalına basıldıktan sonra 1 saniye beklenir, kısa ve net konuşulur, konuşma bitince "Tamam" denilerek mandal bırakılır.
+- Batarya Tasarrufu: Afet ortamında bataryayı korumak için telsiz her saat başı ilk 5 dakika açık tutulur, dinleme yapılır ve ardından kapatılır.
