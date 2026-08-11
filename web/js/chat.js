@@ -6,11 +6,11 @@
  */
 
 const QUICK_CHIPS = [
+  'Envanter',
   'Mors Alfabesi',
-  'Su Ar\u0131tma',
-  'Deprem Protokol\u00fc',
-  '\u0130lk Yard\u0131m: K\u0131r\u0131k',
-  'Acil Triyaj',
+  'Su Arıtma',
+  'Deprem Protokolü',
+  'İlk Yardım: Kırık',
 ];
 
 const LOCAL_STORAGE_KEY = 'crisis_chat_history';
@@ -40,9 +40,9 @@ function renderSavedHistory() {
 }
 
 function scrollToBottom() {
-  const chatArea = document.getElementById('chatArea');
-  if (chatArea) {
-    chatArea.scrollTop = chatArea.scrollHeight;
+  const container = document.getElementById('chatScrollArea') || document.getElementById('chatArea');
+  if (container) {
+    container.scrollTop = container.scrollHeight;
   }
 }
 
@@ -396,6 +396,8 @@ function initQuickChips() {
       font-family: var(--font-mono);
       font-size: 0.75rem;
       cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
     `;
     btn.addEventListener('click', () => sendMessage(chip));
     container.appendChild(btn);
@@ -432,8 +434,94 @@ document.addEventListener('DOMContentLoaded', () => {
   const cancelBtn = document.getElementById('cancelClearBtn');
   if (cancelBtn) cancelBtn.addEventListener('click', closeClearModal);
 
+  // ── nav-chat: Sohbet paneline dön ───────────────────────────────────────────
+  const navChat = document.getElementById('nav-chat');
+  if (navChat) {
+    navChat.addEventListener('click', () => {
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      navChat.classList.add('active');
+
+      // Diğer panelleri gizle
+      ['triyajPanel', 'inventoryPanel', 'libraryPanel', 'childModePanel'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+
+      // Sohbeti göster
+      const chatArea = document.getElementById('chatArea');
+      if (chatArea) chatArea.style.display = 'flex';
+    });
+  }
+
+  // ── Ayarlar Modalı ─────────────────────────────────────────────────────────
+  const settingsBtn = document.getElementById('settingsBtn');
+  const settingsModal = document.getElementById('settingsModal');
+  const closeSettingsBtn = document.getElementById('closeSettingsModalBtn');
+  const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+
+  if (settingsBtn && settingsModal) {
+    settingsBtn.addEventListener('click', () => {
+      settingsModal.style.display = 'flex';
+    });
+  }
+  if (closeSettingsBtn && settingsModal) {
+    closeSettingsBtn.addEventListener('click', () => {
+      settingsModal.style.display = 'none';
+    });
+  }
+  if (saveSettingsBtn && settingsModal) {
+    saveSettingsBtn.addEventListener('click', () => {
+      settingsModal.style.display = 'none';
+    });
+  }
+
+  checkLlmStatus();
   updateRagPanel();
 });
+
+let _statusSse = null;
+
+function checkLlmStatus() {
+  const dot  = document.getElementById('topbarLlmDot');
+  const text = document.getElementById('topbarLlmText');
+  if (!dot || !text) return;
+
+  fetch('/api/status')
+    .then(res => res.json())
+    .then(data => {
+      if (data.model === 'ready') {
+        dot.style.background = 'var(--accent-secondary)';
+        text.style.color      = 'var(--accent-secondary)';
+        text.textContent      = 'Yerel LLM Aktif (phi-3.5-mini)';
+        if (_statusSse) { _statusSse.close(); _statusSse = null; }
+        return;
+      }
+
+      // Model yükleniyor — SSE push akışını dinle
+      dot.style.background = 'var(--accent-red)';
+      text.style.color      = 'var(--accent-red)';
+      text.textContent      = 'Yerel LLM Yükleniyor...';
+
+      if (_statusSse) return; // Bağlantı zaten açık, tekrar açma!
+
+      _statusSse = new EventSource('/api/status/stream');
+      _statusSse.onmessage = (e) => {
+        if (_statusSse) { _statusSse.close(); _statusSse = null; }
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload.model === 'ready') {
+            dot.style.background = 'var(--accent-secondary)';
+            text.style.color      = 'var(--accent-secondary)';
+            text.textContent      = 'Yerel LLM Aktif (phi-3.5-mini)';
+          }
+        } catch (err) {}
+      };
+      _statusSse.onerror = () => {
+        if (_statusSse) { _statusSse.close(); _statusSse = null; }
+      };
+    })
+    .catch(() => {});
+}
 
 function renderRagPanel(chunks) {
   const container = document.getElementById('ragCards');

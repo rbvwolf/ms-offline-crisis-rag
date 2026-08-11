@@ -232,10 +232,10 @@ Gorevin BILGI KAYNAKLARI metinlerini kullanarak kullanicinin sorusuna net, dogru
 {state_section}
 Kurallar:
 - Soruya dogrudan Turkce yanit ver. "Yanit:", "Format:", "Giris:" gibi basliklar yazma.
-- Yalnizca BILGI KAYNAKLARI'ndaki bilgileri kullan. Bilgi uydurma.
+- SADECE VE YALNIZCA BILGI KAYNAKLARI'ndaki GERCEK BILGILERI KULLAN. Metinde sorulan spesifik konu GECMIYORSA kendi zihninden uydurma veya genel kultur cevabi VERME. Metinde cevabi yoksa YALNIZCA "Veritabanımda bu bilgi bulunmamaktadır." yanitini ver.
 - Numarali liste veya maddeler kullan; adimlari net acikla.
 - Yildiz (*), cift yildiz (**), alt cizgi (_) kullanma; sadece duz metin yaz.
-- Mors alfabesi soruldugunda SOS (. . .  - - -  . . .) veya MORS sinyallerini nokta (.) ve cizgi (-) isaretleriyle acikca goster. Rastgele harfler (R-E-S) uydurma.
+- Mors alfabesi soruldugunda SOS (. . .  - - -  . . .) veya MORS sinyallerini nokta (.) ve cizgi (-) isaretleriyle acikca goster. Rastgele harfler uydurma.
 - Tekrara dusme.
 {inventory_rule}
 
@@ -435,7 +435,12 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
         if citations:
             print("\n--- Kaynaklar ---")
             for c in citations:
-                print(f"  * {c}")
+                if isinstance(c, dict):
+                    stype = (c.get("source_type") or "pdf").upper()
+                    sfile = c.get("source") or "dosya"
+                    print(f"* [{stype}] {sfile}")
+                elif isinstance(c, str):
+                    print(f"* {c}")
 
         return visible_response, True
 
@@ -642,6 +647,19 @@ def answer_query_generator(
             yield {"type": "done", "full_response": res_msg}
             return
 
+    # 0. Out-of-domain pre-check for non-crisis queries
+    _OUT_OF_DOMAIN_KEYWORDS = {
+        'kuantum', 'qubit', 'borsa', 'hisse', 'senedi', 'kripto', 'bitcoin',
+        'futbol', 'basketbol', 'süper lig', 'magazin', 'yazılım', 'python'
+    }
+    q_low = user_question.lower()
+    if any(kw in q_low for kw in _OUT_OF_DOMAIN_KEYWORDS):
+        msg = "Veritabanımda bu bilgi bulunmuyor, lütfen varsayımlardan kaçının."
+        yield {"type": "rag_docs", "docs": []}
+        yield {"type": "token", "token": msg}
+        yield {"type": "done", "full_response": msg}
+        return
+
     # 1. Query expansion & resolution
     search_query = user_question
     expanded_query = expand_query(search_query)
@@ -763,6 +781,16 @@ def answer_query_generator(
             _safe_close_stream(stream)
 
         print()
+        if citations:
+            print("--- Kaynaklar ---")
+            for c in citations:
+                if isinstance(c, dict):
+                    stype = (c.get("source_type") or "pdf").upper()
+                    sfile = c.get("source") or "dosya"
+                    print(f"* [{stype}] {sfile}")
+                elif isinstance(c, str):
+                    print(f"* {c}")
+
         raw_response = "".join(raw_tokens)
         visible_response = clean_llm_response(raw_response, user_question=user_question)
         visible_response = re.sub(r'\[BITTI\].*', '', visible_response, flags=re.DOTALL).strip()

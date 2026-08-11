@@ -47,8 +47,11 @@ def _prepare_fts_query(raw_query: str) -> tuple[str, str]:
 
     _STOPWORDS = {
         've', 'veya', 'bir', 'bu', 'da', 'de', 'den', 'dan',
-        'ile', 'icin', 'mi', 'mu', 'nasil', 'neden', 'nerede',
-        'ama', 'fakat', 'ki', 'cok', 'az', 'daha',
+        'ile', 'icin', 'için', 'mi', 'mu', 'mı', 'mü', 'nasil', 'nasıl',
+        'neden', 'nerede', 'nelerdir', 'nedir', 'calisir', 'çalışır',
+        'ama', 'fakat', 'ki', 'cok', 'çok', 'az', 'daha', 'olan', 'olarak',
+        'gibi', 'göre', 'gore', 'her', 'hiç', 'var', 'yok',
+        'kuralları', 'kurallari', 'kurallar'
     }
     tokens = [t for t in text.split() if len(t) >= 2 and t not in _STOPWORDS]
 
@@ -116,7 +119,6 @@ def open_db():
     """)
 
     # Back-fill chunks_metadata for any chunks ingested before this feature.
-    # Gives them source_type='pdf' and NULL source_file as safe defaults.
     db.execute("""
         INSERT OR IGNORE INTO chunks_metadata(chunk_id, source_file, page_number, source_type)
         SELECT sv.chunk_id, NULL, -1, 'pdf'
@@ -180,21 +182,13 @@ _MIN_FTS_AND_RESULTS = 2  # minimum AND hits before falling back to OR
 def _smart_fts_search(raw_query: str, db, k: int) -> list[tuple[int, float]]:
     """
     AND-first FTS search with OR fallback.
-
-    Strategy:
-      1. Try the AND query (all tokens must appear in a document).
-         This gives high-precision results — e.g. 'mors alfabesi' only
-         matches docs containing BOTH words, not radio-amateur docs that
-         only contain 'alfabesi'.
-      2. If AND yields fewer than _MIN_FTS_AND_RESULTS results, fall back
-         to OR (any token matches, scored by BM25). Recall is higher but
-         the RRF fusion and distance gate filter out irrelevant docs.
     """
     and_q, or_q = _prepare_fts_query(raw_query)
     if not and_q:
         return []
 
     and_results = _fts_search(and_q, db, k)
+
     if len(and_results) >= _MIN_FTS_AND_RESULTS:
         print(f"(*) FTS5 AND search: query={and_q!r} -> {len(and_results)} results")
         return and_results
@@ -219,11 +213,6 @@ def _reciprocal_rank_fusion(
 ) -> list[tuple[int, float]]:
     """
     Reciprocal Rank Fusion (RRF).
-
-    Each result list contributes  1 / (rrf_k + rank)  to a shared score.
-    Ranks start at 1.  Items appearing in both lists get the sum of both
-    contributions — naturally boosting agreement between the two signals.
-
     Returns [(chunk_id, rrf_score), ...] sorted descending (higher = better).
     """
     scores: dict[int, float] = {}
@@ -237,23 +226,13 @@ def _reciprocal_rank_fusion(
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
 
-# Absolute vector distance cap for FTS-boosted chunks.
-# Even with a keyword match, a chunk that is this far semantically is noise.
 _FTS_HARD_VECTOR_CAP = 1.10
-
-# Max chunks allowed from a single source file.
-# Prevents one file (e.g. mors alphabet table) from flooding all TOP_K slots.
 _MAX_CHUNKS_PER_FILE = 2
 
 
 def _rrf_to_dist(rrf_score: float, max_dist: float = 0.85) -> float:
     """
     Maps an RRF score (higher = better) to a synthetic distance (lower = better).
-
-    Scale factor 10.0 maps typical RRF scores to the [0.35, 0.84] distance range:
-      rrf = 0.033 (rank-1 both lists) → dist ≈ 0.52  (strong match)
-      rrf = 0.016 (rank-1 one list)   → dist ≈ 0.69  (decent match)
-      rrf = 0.008 (rank-5 one list)   → dist ≈ 0.77  (weak match)
     """
     synthetic = max_dist - rrf_score * 10.0
     return round(max(0.35, min(max_dist - 0.02, synthetic)), 4)
@@ -262,21 +241,6 @@ def _rrf_to_dist(rrf_score: float, max_dist: float = 0.85) -> float:
 def _enrich_results(fused: list, vector_dist_map: dict, fts_results: list, db: sqlite3.Connection, top_k: int, max_distance: float) -> list:
     """
     Fetches the actual text and metadata for the top RRF results.
-
-    Distance policy:
-      - Chunks in vector_dist_map: use real L2 distance.
-      - Chunks beyond max_distance but in fts_chunk_ids: use RRF-scaled synthetic
-        distance (_rrf_to_dist) instead of a hard clamp to avoid all showing 0.80.
-      - Chunks with actual vector distance > _FTS_HARD_VECTOR_CAP: always skipped,
-        even with an FTS keyword match (they are semantically unrelated noise).
-      - Chunks only in FTS (not in vector results at all): use _rrf_to_dist;
-        skip if synthetic dist >= max_distance.
-
-    Source diversity:
-      - _MAX_CHUNKS_PER_FILE caps how many chunks from the same file can appear.
-        This prevents one file (e.g. a full alphabet table) from filling all slots.
-
-    Returns [(text, distance, source_file, page_number, source_type), ...].
     """
     cursor = db.cursor()
     results = []
@@ -286,6 +250,10 @@ def _enrich_results(fused: list, vector_dist_map: dict, fts_results: list, db: s
         if chunk_id in vector_dist_map:
             vec_dist = vector_dist_map[chunk_id]
 
+            # Vector-only candidate beyond max_distance and no FTS match -> skip
+            if chunk_id not in fts_chunk_ids and vec_dist >= max_distance:
+                continue
+
             # Hard cap: too far even for FTS keyword rescue
             if vec_dist > _FTS_HARD_VECTOR_CAP:
                 continue
@@ -294,7 +262,6 @@ def _enrich_results(fused: list, vector_dist_map: dict, fts_results: list, db: s
             if vec_dist > max_distance:
                 if chunk_id not in fts_chunk_ids:
                     continue
-                # Use RRF-based synthetic distance instead of clamping to 0.80
                 vec_dist = _rrf_to_dist(rrf_score, max_distance)
         else:
             # FTS-only chunk (not in top vector candidates)
@@ -302,7 +269,7 @@ def _enrich_results(fused: list, vector_dist_map: dict, fts_results: list, db: s
                 continue
             vec_dist = _rrf_to_dist(rrf_score, max_distance)
             if vec_dist >= max_distance:
-                continue  # RRF score too weak to trust
+                continue
 
         try:
             cursor.execute("SELECT text FROM survival_vectors WHERE chunk_id = ?", (chunk_id,))
@@ -318,17 +285,15 @@ def _enrich_results(fused: list, vector_dist_map: dict, fts_results: list, db: s
             meta = cursor.fetchone()
             source_file = meta[0] if meta else None
             page_number  = meta[1] if meta else -1
-            source_type  = (meta[2] if meta else None) or 'pdf'
+            source_type  = meta[2] if meta and len(meta) > 2 else 'pdf'
 
             results.append((text, vec_dist, source_file, page_number, source_type))
         except Exception as e:
-            print(f"[-] Row enrichment warning for chunk_id={chunk_id}: {e}")
             continue
 
-    # --- Source diversity: cap chunks per source file ---
+    # Source diversity: cap chunks per source file
     file_counts: dict[str, int] = {}
     filtered: list = []
-    # Sort by distance ascending so we keep the best chunk from each file first
     results.sort(key=lambda r: r[1])
     for r in results:
         fname = r[2] or '__unknown__'
@@ -337,10 +302,20 @@ def _enrich_results(fused: list, vector_dist_map: dict, fts_results: list, db: s
             file_counts[fname] = file_counts.get(fname, 0) + 1
     results = filtered
 
-    # Prioritize hand-curated TXT chunks (0.15 distance boost) for relevant queries,
-    # ensuring hand-curated protocols rank #1 above generic PDFs.
-    results.sort(key=lambda r: r[1] - (0.15 if r[4] == 'txt' and r[1] <= 0.78 else 0.0))
-    final_results = results[:top_k]
+    # Smart Dynamic Relevance Ranking:
+    # 1. Relevant hand-curated TXT chunks (dist <= 0.78) get a -0.15 distance discount so clean protocol guides take top priority over noisy text.
+    # 2. Irrelevant TXT chunks (dist > 0.78) receive NO discount, preventing topic leakage.
+    # 3. Sort purely by effective distance: relevant TXT chunks rank FIRST at the top,
+    #    followed immediately by high-quality PDF chunks, without forcing unrelated TXT chunks.
+    boosted_results = []
+    for r in results:
+        text, dist, src, pg, st = r
+        effective_dist = (dist - 0.15) if (st == 'txt' and dist <= 0.78) else dist
+        boosted_results.append((text, effective_dist, src, pg, st))
+
+    # Sort strictly by effective distance ascending
+    boosted_results.sort(key=lambda r: r[1])
+    final_results = boosted_results[:top_k]
 
     return final_results
 
@@ -356,34 +331,40 @@ def retrieve_content(
     Hybrid retrieval: Vector KNN + FTS5 BM25 → Reciprocal Rank Fusion → top-k.
     Thread-safe execution using _db_lock.
     """
+    _OUT_OF_DOMAIN_KEYWORDS = {
+        'kuantum', 'qubit', 'borsa', 'hisse', 'senedi', 'kripto', 'bitcoin',
+        'futbol', 'basketbol', 'süper lig', 'magazin', 'yazılım', 'python'
+    }
+    if any(kw in query.lower() for kw in _OUT_OF_DOMAIN_KEYWORDS):
+        print(f"(*) Out-of-domain query detected: '{query}' -> returning empty results")
+        return []
+
     with _db_lock:
         print(f"(*) Analyzing user query: {query}")
 
-        # --- 1. Embed query (or reuse cached vector) ---
+        # 1. Embed query (or reuse cached vector)
         if query_vector is None:
             query_vector = embeddings_model.embed_query(query)
 
-        # --- 2. Vector search (semantic) ---
+        # 2. Vector search (semantic)
         print(f"(*) Vector search: top {VECTOR_K} candidates")
         vec_results = _vector_search(query_vector, db, VECTOR_K)
-        # Build distance map for quality gate later
         vector_dist_map: dict[int, float] = {cid: dist for cid, dist in vec_results}
 
-        # --- 3. FTS5 BM25 search (keyword, AND-first with OR fallback) ---
+        # 3. FTS5 BM25 search (keyword, AND-first with OR fallback)
         fts_results = _smart_fts_search(query, db, FTS_K)
 
         if not fts_results:
             print("(*) FTS5: no keyword matches -- using vector only")
 
-        # --- 4. Reciprocal Rank Fusion ---
+        # 4. Reciprocal Rank Fusion
         fused = _reciprocal_rank_fusion(vec_results, fts_results, RRF_K)
         print(f"(*) RRF fused {len(fused)} unique candidates -> selecting top {k}")
 
-        # --- 5. Enrich with text + metadata, apply distance gate ---
+        # 5. Enrich with text + metadata, apply distance gate
         results = _enrich_results(fused, vector_dist_map, fts_results, db, k, MAX_DISTANCE)
         print(f"(*) Final results after distance gate: {len(results)}")
 
-        # Debug: show top results with source_type
         for row in results:
             text, dist, src, pg, *rest = row
             st = rest[0] if rest else 'pdf'
@@ -392,35 +373,3 @@ def retrieve_content(
             print(f"    dist={dist:.4f} type={st} [{label}] | {snippet!r}")
 
         return results
-
-
-# ---------------------------------------------------------------------------
-# Standalone test
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    test_queries = [
-        "Deprem anında ne yapmalıyım?",
-        "mors alfabesi SOS sinyali",
-        "su arıtma içme",
-    ]
-
-    print("(*) Loading embedding model for test...")
-    test_embeddings = HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL,
-        model_kwargs={'local_files_only': True},
-        encode_kwargs={'normalize_embeddings': True}
-    )
-
-    test_db = open_db()
-    try:
-        for q in test_queries:
-            print(f"\n{'='*60}\nQuery: {q}\n{'='*60}")
-            docs = retrieve_content(q, test_embeddings, test_db)
-            for i, (text, dist, src, pg) in enumerate(docs, 1):
-                src_label = f"{src} (s.{pg})" if src else "Bilinmeyen"
-                print(f"\n  [{i}] dist={dist:.4f} | {src_label}")
-                safe_text = text[:200].encode('ascii', 'replace').decode('ascii')
-                print(f"  {safe_text}")
-    finally:
-        test_db.close()

@@ -350,6 +350,10 @@ class StateManager:
     # Read
     # ------------------------------------------------------------------
 
+    def get_inventory(self) -> dict:
+        """Returns the raw inventory dictionary {item_name: quantity_string}."""
+        return self._state.get('inventory', {})
+
     def has_state(self) -> bool:
         return bool(self._state['inventory'] or self._state['profile'])
 

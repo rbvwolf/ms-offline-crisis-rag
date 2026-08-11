@@ -1,11 +1,13 @@
 {
   "inventory": {
-    "meyve suyu": "2 litre",
-    "yara bandi": "1 adet",
-    "buskuvi": "2 tane",
-    "su": "4 litre",
-    "biskuvi": "2 tane",
-    "ekmek": "3 tane"
+    "meyve suyu": "4 litre",
+    "yara bandi": "2 adet",
+    "buskuvi": "1 tane",
+    "su": "5 litre",
+    "biskuvi": "4 tane",
+    "ekmek": "3 tane",
+    "ağrı kesici": "2 kutu",
+    "pil": "4 adet"
   },
   "profile": {}
 }

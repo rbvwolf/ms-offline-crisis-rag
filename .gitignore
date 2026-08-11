@@ -25,6 +25,6 @@ data/processed/
 .DS_Store
 Thumbs.db
 
-/venv-bozuk
+/docs
 /scratch
 .gemini/
