@@ -1,5 +1,5 @@
 /**
- * triage.js — Acil Triyaj Karar Ağacı (START Triage Wizard)
+ * triage.js — Acil Triyaj Karar Ağacı (START Triyaj Sihirbazı)
  *
  * Çalışma şekli:
  *  - TAMAMEN offline, SIFIR LLM çağrısı

@@ -1,19 +1,35 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python & Virtual Envs
 venv/
 .venv/
 env/
-
+ENV/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .pytest_cache/
 
+# Databases & Processed Data
 *.db
 *.sqlite
 db/*.db
 db/*.sqlite
 data/processed/
+docs/
 
+# Temp & Scratch
+scratch/
+.tempmediaStorage/
+.user_uploaded/
+*.log
+
+# IDE & OS
 .vscode/
 .idea/
 *.suo
@@ -21,10 +37,6 @@ data/processed/
 *.njsproj
 *.sln
 *.swp
-
 .DS_Store
 Thumbs.db
-
-/docs
-/scratch
 .gemini/

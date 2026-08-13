@@ -217,8 +217,8 @@
         <button class="mode-btn" id="modeBtn-light" title="Acik Modern">&#9728; A&#231;&#305;k</button>
         <button class="mode-btn" id="modeBtn-cli"   title="Guc Tasarrufu CLI">&#9889; CLI</button>
       </div>
-      <button style="padding:0.375rem 1rem;border-radius:0.5rem;background:var(--accent-red);color:#fff;font-family:var(--font-mono);font-size:0.8125rem;border:none;cursor:pointer;font-weight:600;">
-        Acil Durum Modu
+      <button id="emergencyPanicBtn" style="padding:0.375rem 1rem;border-radius:0.5rem;background:var(--accent-red);color:#fff;font-family:var(--font-mono);font-size:0.8125rem;border:none;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:0.375rem;">
+        🚨 Acil Durum Modu
       </button>
     </div>
   </header>
@@ -270,7 +270,7 @@
 
       <!-- Alt -->
       <div style="border-top:1px solid var(--border-main);padding:1rem;display:flex;flex-direction:column;gap:0.5rem;">
-        <button class="nav-btn" id="settingsBtn">
+        <button class="nav-btn" id="settingsBtn" onclick="openSettingsModal()">
           <span class="material-symbols-outlined" style="font-size:18px;">settings</span> Ayarlar
         </button>
         <button class="nav-btn" id="modeToggleSidebar">
@@ -340,6 +340,12 @@
           ℹ️ Sohbette "envanter ekle su 5 litre" veya "su sil" komutları da çalışır. Hem arayüz hem sohbet aynı veritabanını günceller.
         </div>
       </div>
+
+      <!-- ÇOCUK MODU PANELİ -->
+      <div id="childModePanel" style="display:none;flex-direction:column;flex:1;width:100%;height:100%;padding:1.25rem;overflow-y:auto;"></div>
+
+      <!-- SİSTEM GÜNLÜKLERİ PANELİ -->
+      <div id="loglarPanel" style="display:none;flex-direction:column;flex:1;width:100%;height:100%;padding:1.25rem;overflow-y:auto;"></div>
     </main>
 
     <!-- SAG PANEL (RAG Debug) -->
@@ -406,9 +412,7 @@
 
         <div style="border-top:1px solid var(--border-card);padding-top:0.75rem;">
           <div style="font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-muted);margin-bottom:0.375rem;">ENVANTER ENJEKSİYONU</div>
-          <div id="ctxInventoryInjected" style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-secondary);white-space:pre-wrap;text-align:left;word-break:break-word;width:100%;margin:0;padding:0;">
-            Pasif (Sorgu stokla ilgili değil)
-          </div>
+          <div id="ctxInventoryInjected" style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-secondary);white-space:pre-line;text-align:left;word-break:break-word;width:100%;max-height:10rem;overflow-y:auto;background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.375rem;padding:0.625rem 0.75rem;box-sizing:border-box;">Pasif (Sorgu stokla ilgili değil)</div>
         </div>
 
         <div style="border-top:1px solid var(--border-card);padding-top:0.75rem;">
@@ -492,60 +496,72 @@
       </button>
       <button id="confirmClearBtn" style="padding:0.5rem 1rem;border:none;border-radius:0.375rem;background:var(--accent-red);color:#fff;font-family:var(--font-mono);font-size:0.8125rem;font-weight:600;cursor:pointer;">
         Evet, Sil
-      </button>
     </div>
+  </div>
+</div>
+
 <!-- SETTINGS MODAL -->
 <div id="settingsModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.65);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:1rem;">
-  <div style="max-width:28rem;width:100%;background:var(--bg-card);border:1px solid var(--border-main);border-radius:var(--rounded-card);padding:1.5rem;box-shadow:var(--shadow-card);display:flex;flex-direction:column;gap:1.25rem;">
+  <div style="max-width:30rem;width:100%;background:var(--bg-card);border:1px solid var(--border-main);border-radius:var(--rounded-card);padding:1.5rem;box-shadow:var(--shadow-card);display:flex;flex-direction:column;gap:1.25rem;">
     <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border-card);padding-bottom:0.75rem;">
       <div style="display:flex;align-items:center;gap:0.5rem;">
         <span class="material-symbols-outlined" style="color:var(--accent-primary);font-size:22px;">settings</span>
-        <h3 style="font-family:var(--font-sans);font-weight:700;font-size:1rem;color:var(--text-primary);">Sistem Ayarları</h3>
+        <h3 style="font-family:var(--font-sans);font-weight:700;font-size:1rem;color:var(--text-primary);">Sistem & RAG Parametre Ayarları</h3>
       </div>
       <button id="closeSettingsModalBtn" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;line-height:1;">&times;</button>
     </div>
 
     <!-- Ayar Seçenekleri -->
-    <div style="display:flex;flex-direction:column;gap:1rem;font-family:var(--font-mono);font-size:0.8125rem;">
-      <!-- 1. Tema -->
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <div style="color:var(--text-primary);font-weight:600;">Arayüz Modu</div>
-          <div style="color:var(--text-muted);font-size:0.6875rem;">Koyu, Açık veya Güç Tasarrufu CLI</div>
+    <div style="display:flex;flex-direction:column;gap:1.125rem;font-family:var(--font-mono);font-size:0.8125rem;">
+      
+      <!-- 1. Model Sıcaklığı (Temperature) -->
+      <div style="display:flex;flex-direction:column;gap:0.375rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <label for="settingTemp" style="color:var(--text-primary);font-weight:600;">Model Sıcaklığı (Temperature): <span id="settingTempVal" style="color:var(--accent-primary);">0.1</span></label>
         </div>
-        <span style="font-size:0.75rem;padding:0.25rem 0.5rem;background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.25rem;color:var(--accent-primary);">Otomatik / Seçmeli</span>
+        <input type="range" id="settingTemp" min="0.0" max="0.7" step="0.05" value="0.1" style="width:100%;accent-color:var(--accent-primary);cursor:pointer;">
+        <div style="color:var(--text-muted);font-size:0.6875rem;">0.1 = Düşük Halüsinasyon (Önerilen) | 0.7 = Yüksek Yaratıcılık</div>
       </div>
 
-      <!-- 2. RAG Modu -->
+      <!-- 2. RAG Getirilecek Chunk Sayısı (Top-K) -->
       <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border-card);padding-top:0.75rem;">
         <div>
-          <div style="color:var(--text-primary);font-weight:600;">RAG Arama Motoru</div>
-          <div style="color:var(--text-muted);font-size:0.6875rem;">FTS5 BM25 + Vektör RRF Füzyon</div>
+          <div style="color:var(--text-primary);font-weight:600;">RAG Top-K Chunk Sayısı</div>
+          <div style="color:var(--text-muted);font-size:0.6875rem;">Sorgu başına çekilecek belge parçası</div>
         </div>
-        <span style="font-size:0.75rem;padding:0.25rem 0.5rem;background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.25rem;color:var(--accent-secondary);">Aktif (Karma)</span>
+        <select id="settingTopK" style="background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.375rem;color:var(--accent-secondary);font-size:0.75rem;padding:0.25rem 0.5rem;outline:none;">
+          <option value="2">2 Chunk</option>
+          <option value="3" selected>3 Chunk (Varsayılan)</option>
+          <option value="5">5 Chunk (Derin)</option>
+        </select>
       </div>
 
-      <!-- 3. LLM Model -->
+      <!-- 3. Maksimum Bağlam Karakter Limiti -->
       <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border-card);padding-top:0.75rem;">
         <div>
-          <div style="color:var(--text-primary);font-weight:600;">Yerel Çıkarım Modeli</div>
-          <div style="color:var(--text-muted);font-size:0.6875rem;">Microsoft Phi-3.5-mini 3.8B</div>
+          <div style="color:var(--text-primary);font-weight:600;">Bağlam Kapasitesi (Context Limit)</div>
+          <div style="color:var(--text-muted);font-size:0.6875rem;">LLM'e gönderilecek maksimum bağlam</div>
         </div>
-        <span style="font-size:0.75rem;padding:0.25rem 0.5rem;background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.25rem;color:var(--accent-primary);">Foundry Local</span>
+        <select id="settingMaxContext" style="background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.375rem;color:var(--accent-primary);font-size:0.75rem;padding:0.25rem 0.5rem;outline:none;">
+          <option value="8000">8,000 Karakter</option>
+          <option value="16000" selected>16,000 Karakter</option>
+          <option value="24000">24,000 Karakter</option>
+        </select>
       </div>
 
-      <!-- 4. Otomatik Veri Senkronizasyonu -->
-      <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border-card);padding-top:0.75rem;">
-        <div>
-          <div style="color:var(--text-primary);font-weight:600;">Envanter & Durum Kaydı</div>
-          <div style="color:var(--text-muted);font-size:0.6875rem;">Otomatik user_state.json güncellemeleri</div>
+      <!-- 4. Hızlı Sistem Temizliği -->
+      <div style="display:flex;flex-direction:column;gap:0.5rem;border-top:1px solid var(--border-card);padding-top:0.75rem;">
+        <div style="color:var(--text-primary);font-weight:600;">Sistem Hafızası & Sıfırlama</div>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+          <button id="settingClearHistoryBtn" style="flex:1;padding:0.375rem 0.5rem;background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.25rem;color:var(--text-secondary);font-size:0.75rem;cursor:pointer;">💬 Sohbeti Sıfırla</button>
+          <button id="settingClearLogsBtn" style="flex:1;padding:0.375rem 0.5rem;background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.25rem;color:var(--text-secondary);font-size:0.75rem;cursor:pointer;">📋 Logları Sıfırla</button>
         </div>
-        <span style="font-size:0.75rem;padding:0.25rem 0.5rem;background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.25rem;color:var(--accent-secondary);">Açık</span>
       </div>
+
     </div>
 
-    <div style="display:flex;justify-content:flex-end;border-top:1px solid var(--border-card);padding-top:0.75rem;">
-      <button id="saveSettingsBtn" style="padding:0.5rem 1.25rem;background:var(--accent-primary);color:#fff;border:none;border-radius:0.375rem;font-family:var(--font-mono);font-size:0.8125rem;font-weight:600;cursor:pointer;">Tamam</button>
+    <div style="display:flex;justify-content:flex-end;gap:0.5rem;border-top:1px solid var(--border-card);padding-top:0.75rem;">
+      <button id="saveSettingsBtn" style="padding:0.5rem 1.25rem;background:var(--accent-primary);color:#13131b;border:none;border-radius:0.375rem;font-family:var(--font-mono);font-size:0.8125rem;font-weight:700;cursor:pointer;">Kaydet & Uygula</button>
     </div>
   </div>
 </div>
@@ -556,6 +572,9 @@
 <script src="js/inventory.js"></script>
 <script src="js/library.js"></script>
 <script src="js/triage.js"></script>
+<script src="js/child.js"></script>
+<script src="js/logs.js"></script>
+<script src="js/emergency.js"></script>
 <script>
   function switchNavPanel(name) {
     document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
@@ -574,6 +593,10 @@
       if (typeof showLibraryPanel === 'function') showLibraryPanel();
     } else if (name === 'triyaj') {
       if (typeof showTriagePanel === 'function') showTriagePanel();
+    } else if (name === 'cocuk') {
+      if (typeof showChildPanel === 'function') showChildPanel();
+    } else if (name === 'loglar') {
+      if (typeof showLogsPanel === 'function') showLogsPanel();
     } else if (name === 'chat') {
       var chatArea = document.getElementById('chatArea');
       if (chatArea) chatArea.style.display = 'flex';

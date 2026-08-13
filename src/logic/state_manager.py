@@ -18,6 +18,9 @@ import json
 import os
 import re
 import sys
+import logging
+
+log = logging.getLogger("crisis_rag")
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from core.config import USER_STATE_PATH
@@ -294,6 +297,7 @@ class StateManager:
             self._state['inventory'][key] = val_str
 
         self._save()
+        log.info(f"📦 [ENVANTER GÜNCELLENDİ] Güncel stoklar: {self._state['inventory']}")
         print(f"(*) Inventory saved: {self._state['inventory']}")
 
     def remove_inventory_direct(self, items: dict):
@@ -466,6 +470,7 @@ class StateManager:
         """Wipe all state (inventory + profile) from memory and disk."""
         self._state = {'inventory': {}, 'profile': {}}
         self._save()
+        log.info("🗑️ [ENVANTER SIFIRLANDI] Tüm stok ve durum kayıtları silindi.")
         print('(*) User state cleared.')
 
 
@@ -485,15 +490,26 @@ def deduplicate_paragraphs(text: str) -> str:
             cleaned_paragraphs.append('')
             continue
 
-        # For list items, only perform exact string deduplication so list items aren't discarded
-        is_list_item = stripped.startswith('-') or bool(re.match(r'^\d+[\.\)]', stripped))
-        if is_list_item:
-            norm_item = re.sub(r'\s+', ' ', stripped.lower())
-            if norm_item in seen_exact:
-                continue
-            seen_exact.add(norm_item)
-            cleaned_paragraphs.append(stripped)
+        # Normalize line (strip list numbers like '1. ', '- ') for duplicate checks
+        clean_norm = re.sub(r'^[\d\.\-\*\)]+\s*', '', stripped.lower()).strip()
+        norm_item = re.sub(r'\s+', ' ', clean_norm)
+        if norm_item in seen_exact:
             continue
+
+        words = set(re.findall(r'\w+', clean_norm))
+        if len(words) >= 3:
+            is_dup = False
+            for prev_words in seen_word_sets:
+                intersection = len(words & prev_words)
+                smaller_len = min(len(words), len(prev_words))
+                if smaller_len > 0 and (intersection / smaller_len) >= 0.75:
+                    is_dup = True
+                    break
+            if is_dup:
+                continue
+            seen_word_sets.append(words)
+
+        seen_exact.add(norm_item)
 
         sentences = re.split(r'(?<=[.!?])\s+', stripped)
         valid_sentences = []

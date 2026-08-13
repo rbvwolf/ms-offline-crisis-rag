@@ -185,7 +185,7 @@ function renderInventoryCards() {
 }
 
 // ── In-Page Modallar (Tekli Silme, Tümünü Sıfırlama, Yeni Malzeme Ekle) ──────
-function _buildInPageModals() {
+function _buildInventoryInPageModals() {
   if (document.getElementById('invModalsContainer')) return;
 
   const container = document.createElement('div');
@@ -293,7 +293,7 @@ function _buildInPageModals() {
 }
 
 function _openSingleDeleteModal(item) {
-  _buildInPageModals();
+  _buildInventoryInPageModals();
   _pendingDeleteItem = item;
   const modal = document.getElementById('invDeleteModal');
   const txt   = document.getElementById('invDeleteModalText');
@@ -302,13 +302,13 @@ function _openSingleDeleteModal(item) {
 }
 
 function _openClearAllModal() {
-  _buildInPageModals();
+  _buildInventoryInPageModals();
   const modal = document.getElementById('invClearModal');
   if (modal) modal.style.display = 'flex';
 }
 
 function _openAddModal() {
-  _buildInPageModals();
+  _buildInventoryInPageModals();
   const modal = document.getElementById('invAddModal');
   if (modal) {
     modal.style.display = 'flex';
@@ -594,7 +594,7 @@ function _escHtml(str) {
 function showInventoryPanel() {
   _injectInventoryStyles();
   _buildInventoryPanel();
-  _buildInPageModals();
+  _buildInventoryInPageModals();
 
   const hideable = ['chatArea', 'triyajPanel', 'libraryPanel', 'childModePanel', 'loglarPanel', 'kutuphanePanel'];
   hideable.forEach(id => {
@@ -625,7 +625,7 @@ function refreshInventoryIfVisible() {
 function _initInventoryEvents() {
   _injectInventoryStyles();
   _buildInventoryPanel();
-  _buildInPageModals();
+  _buildInventoryInPageModals();
 
   const navEnv = document.getElementById('nav-envanter');
   if (navEnv) {

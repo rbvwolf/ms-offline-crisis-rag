@@ -322,6 +322,21 @@ function initRightSidebarTabs() {
     });
   }
 
+  // Global Backdrop Click-to-Close for all modals (Item 11.3)
+  document.addEventListener('click', (e) => {
+    const modalIds = [
+      'citationModal', 'clearModal', 'settingsModal',
+      'invAddModal', 'invDeleteModal', 'invClearModal',
+      'libResetSingleModal', 'libResetAllModal'
+    ];
+    modalIds.forEach(id => {
+      const modalEl = document.getElementById(id);
+      if (modalEl && e.target === modalEl) {
+        modalEl.style.display = 'none';
+      }
+    });
+  });
+
   // View Full File button inside modal
   const viewFullFileBtn = document.getElementById('viewFullFileBtn');
   const viewChunkTextBtn = document.getElementById('viewChunkTextBtn');
@@ -368,7 +383,11 @@ function openCitationModal(title, text, filename) {
   const chunkBtn = document.getElementById('viewChunkTextBtn');
 
   if (modal && titleEl && contentEl) {
-    currentActiveFilename = filename || title.split(' ')[0];
+    let cleanFile = filename;
+    if (!cleanFile && title) {
+      cleanFile = title.replace(/^[\*\s\-\[\]A-Za-z]+\]\s*/i, '').trim();
+    }
+    currentActiveFilename = cleanFile || title;
     currentActiveChunkText = text || 'Henüz kaynak alıntısı getirilmedi. Lütfen bir soru sorun.';
     titleEl.textContent = title;
     contentEl.textContent = currentActiveChunkText;
@@ -453,25 +472,92 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ── Ayarlar Modalı ─────────────────────────────────────────────────────────
+  // ── Ayarlar Modalı (İnteraktif Parametre Yönetimi) ────────────────────────
   const settingsBtn = document.getElementById('settingsBtn');
   const settingsModal = document.getElementById('settingsModal');
   const closeSettingsBtn = document.getElementById('closeSettingsModalBtn');
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
 
-  if (settingsBtn && settingsModal) {
-    settingsBtn.addEventListener('click', () => {
-      settingsModal.style.display = 'flex';
+  const settingTempInput = document.getElementById('settingTemp');
+  const settingTempVal = document.getElementById('settingTempVal');
+  const settingTopKInput = document.getElementById('settingTopK');
+  const settingMaxContextInput = document.getElementById('settingMaxContext');
+  const settingClearHistoryBtn = document.getElementById('settingClearHistoryBtn');
+  const settingClearLogsBtn = document.getElementById('settingClearLogsBtn');
+
+  const _loadSettingsToUI = () => {
+    const temp = localStorage.getItem('app_setting_temp') || '0.1';
+    const topK = localStorage.getItem('app_setting_top_k') || '3';
+    const maxCtx = localStorage.getItem('app_setting_max_context') || '16000';
+
+    if (settingTempInput) settingTempInput.value = temp;
+    if (settingTempVal) settingTempVal.textContent = temp;
+    if (settingTopKInput) settingTopKInput.value = topK;
+    if (settingMaxContextInput) settingMaxContextInput.value = maxCtx;
+  };
+
+  if (settingTempInput && settingTempVal) {
+    settingTempInput.addEventListener('input', () => {
+      settingTempVal.textContent = settingTempInput.value;
     });
   }
-  if (closeSettingsBtn && settingsModal) {
+
+  window.openSettingsModal = function() {
+    _loadSettingsToUI();
+    if (settingsModal) settingsModal.style.display = 'flex';
+  };
+
+  window.closeSettingsModal = function() {
+    if (settingsModal) settingsModal.style.display = 'none';
+  };
+
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.openSettingsModal();
+    });
+  }
+  if (closeSettingsBtn) {
     closeSettingsBtn.addEventListener('click', () => {
-      settingsModal.style.display = 'none';
+      window.closeSettingsModal();
     });
   }
   if (saveSettingsBtn && settingsModal) {
     saveSettingsBtn.addEventListener('click', () => {
+      const temp = settingTempInput ? settingTempInput.value : '0.1';
+      const topK = settingTopKInput ? settingTopKInput.value : '3';
+      const maxCtx = settingMaxContextInput ? settingMaxContextInput.value : '16000';
+
+      localStorage.setItem('app_setting_temp', temp);
+      localStorage.setItem('app_setting_top_k', topK);
+      localStorage.setItem('app_setting_max_context', maxCtx);
+
+      try {
+        fetch('/api/logs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: `⚙️ [SİSTEM AYARLARI] Güncellendi: Temp=${temp}, Top-K=${topK}, ContextLimit=${maxCtx}` })
+        }).catch(() => {});
+      } catch (e) {}
+
       settingsModal.style.display = 'none';
+    });
+  }
+
+  if (settingClearHistoryBtn) {
+    settingClearHistoryBtn.addEventListener('click', () => {
+      clearChatHistory();
+      if (settingsModal) settingsModal.style.display = 'none';
+    });
+  }
+
+  if (settingClearLogsBtn) {
+    settingClearLogsBtn.addEventListener('click', () => {
+      fetch('/api/logs', { method: 'DELETE' })
+        .then(() => {
+          if (typeof refreshLogs === 'function') refreshLogs();
+          if (settingsModal) settingsModal.style.display = 'none';
+        }).catch(() => {});
     });
   }
 

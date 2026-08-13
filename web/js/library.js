@@ -372,8 +372,8 @@ function _injectLibraryStyles() {
   document.head.appendChild(style);
 }
 
-// ── In-Page Modallar (Tekli Sıfırlama, Tümünü Sıfırlama) ─────────────────────
-function _buildInPageModals() {
+// ── Modallar (Sıfırlama İşlemleri) ───────────────────────────────────────────
+function _buildLibraryInPageModals() {
   if (document.getElementById('libModalsContainer')) return;
 
   const container = document.createElement('div');
@@ -679,7 +679,10 @@ function _escHtml(str) {
 
 // ── Dışarıdan Çağrılabilir API ────────────────────────────────────────────────
 function showLibraryPanel() {
-  const hideable = ['chatArea', 'triyajPanel', 'inventoryPanel', 'childModePanel'];
+  _injectLibraryStyles();
+  _buildLibraryInPageModals();
+
+  const hideable = ['chatArea', 'triyajPanel', 'inventoryPanel', 'childModePanel', 'loglarPanel'];
   hideable.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
@@ -702,7 +705,7 @@ function hideLibraryPanel() {
 document.addEventListener('DOMContentLoaded', () => {
   _injectLibraryStyles();
   _buildLibraryPanel();
-  _buildInPageModals();
+  _buildLibraryInPageModals();
   _loadProgress();
 
   const navLib = document.getElementById('nav-kutuphane');

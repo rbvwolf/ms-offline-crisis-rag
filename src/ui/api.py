@@ -38,7 +38,45 @@ sys.path.insert(0, str(SRC_DIR / "core"))
 
 from generator import setup_system, answer_query_generator
 
+import collections
+from datetime import datetime
+
+class InMemoryLogHandler(logging.Handler):
+    def __init__(self, max_records: int = 500):
+        super().__init__()
+        self.records = collections.deque(maxlen=max_records)
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            log_entry = {
+                "timestamp": datetime.fromtimestamp(record.created).strftime("%H:%M:%S"),
+                "level": record.levelname,
+                "logger": record.name,
+                "message": msg
+            }
+            self.records.append(log_entry)
+        except Exception:
+            self.handleError(record)
+
+    def get_logs(self):
+        return list(self.records)
+
+    def clear(self):
+        self.records.clear()
+
+class EndpointLogFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not ("/api/logs" in msg or "/api/status" in msg)
+
+logging.getLogger("uvicorn.access").addFilter(EndpointLogFilter())
+
+in_memory_log_handler = InMemoryLogHandler()
+in_memory_log_handler.setFormatter(logging.Formatter("%(message)s"))
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logging.getLogger().addHandler(in_memory_log_handler)
 log = logging.getLogger("crisis_rag")
 
 app = FastAPI(
@@ -172,6 +210,7 @@ async def post_chat(request: Request):
         }, status_code=503)
 
     def event_generator():
+        log.info(f"💬 [SOHBET SORUSU] '{query}'")
         print(f"\n{'='*55}")
         print(f"  [WEB] Sorgu: {query!r}")
         print(f"{'='*55}")
@@ -191,6 +230,7 @@ async def post_chat(request: Request):
             if p_type == "rag_docs":
                 docs = payload.get("docs", [])
                 app_state["last_rag_docs"] = docs
+                log.info(f"🔍 [RAG ARAMA] Veritabanından {len(docs)} ilgili parça (chunk) getirildi.")
                 print(f"(*) RAG panel guncellendi: {len(docs)} chunk SSE uzerinden gonderiliyor")
                 for i, d in enumerate(docs, 1):
                     fname = d.get("source_file", "?")
@@ -210,6 +250,7 @@ async def post_chat(request: Request):
                 data_json = json.dumps({"token": token}, ensure_ascii=False)
                 yield f"data: {data_json}\n\n"
             elif p_type == "done":
+                log.info(f"⚡ [LLM YANITI COMPLETED] SSE akışı tamamlandı ({token_count} token iletildi).")
                 print(f"(*) Stream tamamlandi — {token_count} token SSE uzerinden gonderildi")
                 yield "data: [DONE]\n\n"
 
@@ -238,6 +279,8 @@ async def post_inventory(request: Request):
     if not item or not app_state["state_manager"]:
         return JSONResponse({"error": "Gereksiz istek"}, status_code=400)
 
+    log.info(f"📦 [ENVANTER İŞLEMİ] Eylem: {action.upper()} | Malzeme: '{item}' | Miktar: {amount}")
+
     if action == "delete":
         app_state["state_manager"].remove_inventory_direct({item: amount})
     else:
@@ -251,6 +294,27 @@ async def delete_inventory():
         app_state["state_manager"].clear()
         return JSONResponse({"status": "cleared"})
     return JSONResponse({"status": "no_state_manager"})
+
+@app.get("/api/logs")
+async def get_logs():
+    return JSONResponse({
+        "logs": in_memory_log_handler.get_logs(),
+        "count": len(in_memory_log_handler.get_logs())
+    })
+
+@app.post("/api/logs")
+async def post_log(request: Request):
+    body = await request.json()
+    msg = body.get("message", "").strip()
+    if msg:
+        log.info(msg)
+    return JSONResponse({"status": "ok"})
+
+@app.delete("/api/logs")
+async def delete_logs():
+    in_memory_log_handler.clear()
+    log.info("Sistem günlükleri kullanıcı tarafından temizlendi.")
+    return JSONResponse({"status": "cleared"})
 
 @app.get("/api/library/list")
 async def get_library_list():
@@ -306,21 +370,48 @@ async def get_library_list():
 
     return JSONResponse({"files": files, "count": len(files)})
 
+@app.get("/api/child-stories")
+async def get_child_stories():
+    """
+    Reads calming children stories from data/kisa_hikayeler directory and returns them to web frontend.
+    """
+    stories_dir = PROJECT_DIR / "data" / "kisa_hikayeler"
+    stories = []
+    if stories_dir.exists():
+        for p in sorted(stories_dir.glob("*.txt")):
+            try:
+                content = p.read_text(encoding="utf-8").strip()
+                lines = [line.strip() for line in content.splitlines() if line.strip()]
+                title = lines[0] if lines else p.stem.replace("_", " ").title()
+                body = "\n\n".join(lines[1:]) if len(lines) > 1 else content
+                stories.append({
+                    "id": p.stem,
+                    "title": title,
+                    "content": body,
+                    "filename": p.name
+                })
+            except Exception as e:
+                log.warning(f"Hikaye okuma hatası {p.name}: {e}")
+
+    return JSONResponse({"stories": stories, "count": len(stories)})
+
 @app.get("/api/file/{filename}")
 async def get_raw_file(filename: str):
     """
     Returns full content of a raw TXT file or extracts ALL pages from a PDF file for viewing in browser.
     """
+    log.info(f"📖 [KÜTÜPHANE OKUYUCU] Belge görüntülendi: '{filename}'")
     raw_txts_dir = PROJECT_DIR / "data" / "raw_txts"
     raw_pdfs_dir = PROJECT_DIR / "data" / "raw_pdfs"
     pdfs_dir     = PROJECT_DIR / "data" / "pdfs"
     stories_dir  = PROJECT_DIR / "data" / "stories"
+    kisa_dir     = PROJECT_DIR / "data" / "kisa_hikayeler"
     books_dir    = PROJECT_DIR / "data" / "books"
 
     # 1. TXT Search
     txt_path = raw_txts_dir / filename
     if not txt_path.exists():
-        for d in (raw_txts_dir, stories_dir, books_dir):
+        for d in (raw_txts_dir, stories_dir, kisa_dir, books_dir):
             if d.exists():
                 for p in d.glob("*.txt"):
                     if p.name.lower() == filename.lower():
