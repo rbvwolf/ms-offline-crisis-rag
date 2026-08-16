@@ -1,32 +1,17 @@
 AFET VE KRİZ DURUMLARINDA İLETİŞİM VE SİNYALİZASYON REHBERİ
 
-1. MORS ALFABESİ VE ACİL DURUM SİNYALİZASYONU
-Mors alfabesi, internet veya telefon şebekelerinin bulunmadığı afet ortamlarında elektrik, ses veya ışık yoluyla mesaj iletmeyi sağlayan evrensel bir sinyalizasyon yöntemidir.
+1. MORS ALFABESİ VE SOS ACİL YARDIM SİNYALİ
+Uluslararası SOS acil yardım sinyali Mors alfabesinde 3 kısa, 3 uzun, 3 kısa sinyal olarak iletilir (. . .  - - -  . . .).
 
-Sinyal Yapısı:
-- Kısa Sinyal (Nokta '.'): 1 birim süre (örneğin 1 saniyelik ışık çakması veya düdük sesi).
-- Uzun Sinyal (Çizgi '-'): 3 birim süre (örneğin 3 saniyelik ışık çakması veya düdük sesi).
-- Sinyal Aralığı: Harfler arasında 3 birim, kelimeler arasında 7 birim beklenir.
-
-Temel Mors Harfleri ve Acil Durum İşaretleri:
-- S = . . . (3 Kısa Sinyal)
-- O = - - - (3 Uzun Sinyal)
-- M = - - (2 Uzun Sinyal)
-- R = . - . (Kısa Uzun Kısa)
-- SOS Acil Yardım Sinyali: . . .  - - -  . . . (3 Kısa, 3 Uzun, 3 Kısa Sinyal)
-
-SOS Acil Çağrı Protokolü:
-- Uluslararası SOS acil yardım sinyali: . . . - - - . . . (3 kısa, 3 uzun, 3 kısa sinyal).
-- Uygulama: Sinyal verildikten sonra 1 dakika beklenir ve yardım ulaşana kadar ritmik olarak tekrarlanır.
-- Sesle Sinyal: Düdük veya borazan ile 3 kısa, 3 uzun, 3 kısa düdük çalınır.
-- Işıkla Sinyal: El feneri veya araç farıyla 3 kısa flaş, 3 uzun flaş, 3 kısa flaş yapılır.
-- Görsel Sinyal: Enkaz üstüne veya açık alana taş, dal veya kıyafetler dizilerek büyük harflerle SOS yazılır.
-
+SOS Çağrısı Verme Yöntemleri:
+1. Sinyal Kodu: 3 kısa, 3 uzun, 3 kısa sinyal (. . .  - - -  . . .).
+2. Düdük ile Sesli Çağrı: Düdükle 3 kısa düdük, 3 uzun düdük, 3 kısa düdük çalınır.
+3. El Feneri ile Işıklı Çağrı: Fenerle 3 kısa flaş, 3 uzun flaş, 3 kısa flaş çakılır.
+4. Enkaz Altında Vurarak Çağrı: Kalorifer borusuna veya sert zemine 3 kısa vuruş, 3 uzun vuruş, 3 kısa vuruş yapılır.
+5. Dinleme ve Tekrar: Sinyal verildikten sonra 1 dakika boyunca sessizce dinleme yapılır ve yardım gelene kadar ritmik olarak tekrarlanır.
+6. Telsiz Acil Durum Kanalı: PMR 446 telsizlerde Kanal 1 (446.00625 MHz) acil durum iletişim frekansıdır.
 
 2. PMR 446 TELSİZ İLETİŞİM PROTOKOLÜ
-PMR 446 telsizler, baz istasyonuna ihtiyaç duymadan cihazdan cihaza doğrudan haberleşme sağlayan lisanssız acil durum telsizleridir.
-
-Kullanım Kuralları:
-- Acil Durum Kanalı: Kanal 1 (446.00625 MHz), Türkiye genelinde afet ve arama-kurtarma öncelikli iletişim kanalıdır.
-- Konuşma Disiplini: PTT mandalına basıldıktan sonra 1 saniye beklenir, kısa ve net konuşulur, konuşma bitince "Tamam" denilerek mandal bırakılır.
-- Batarya Tasarrufu: Afet ortamında bataryayı korumak için telsiz her saat başı ilk 5 dakika açık tutulur, dinleme yapılır ve ardından kapatılır.
+PMR 446 telsizler, afet durumunda şebekeye ihtiyaç duymadan doğrudan haberleşme sağlar.
+- Acil Çağrı Kanalı: Kanal 1 (446.00625 MHz) acil durum ve arama-kurtarma öncelikli frekansıdır.
+- Batarya Tasarrufu: Telsiz her saat başı ilk 5 dakika açık tutulur, dinleme yapılır ve ardından kapatılır.

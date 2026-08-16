@@ -1,15 +1,14 @@
-ACİL DURUMLARDA ALTERNATİF İLETİŞİM VE SİNYALİZASYON
+ACİL DURUMLARDA VE AFETLERDE İLETİŞİM VE SİNYALİZASYON REHBERİ
 
-DÜDÜK VE SESLİ SİNYALLER (EVRENSEL SOS):
-- Sesinizi duyurmak için bağırmak yerine mutlaka düdük kullanın (enerji tasarrufu sağlar).
-- Uluslararası acil durum sesli sinyali: 3 kısa, 3 uzun, 3 kısa düdük çalınmasıdır (S-O-S).
-- Arama kurtarma ekiplerinin (AFAD, UMKE) "Sesimi duyan var mı?" çağrısına cevap verirken ritmik olarak sert zeminlere vurun.
+1. MORS ALFABESİ VE ULUSLARARASI SOS ÇAĞRISI
+Mors alfabesinde uluslararası acil durum SOS sinyali 3 kısa, 3 uzun ve 3 kısa sinyalden oluşur (. . .  - - -  . . .).
 
-GÖRSEL SİNYALLER VE AYNA KULLANIMI:
-- Gündüz saatlerinde arama kurtarma helikopterlerinin veya uzaktaki ekiplerin dikkatini çekmek için SOS aynası, CD arkası, folyo veya dikiz aynası kullanın.
-- Aynayı güneşe doğru tutun ve yansıyan ışığı hedefin (helikopter/insan) üzerine doğru ritmik olarak yönlendirin.
-
-TEKNOLOJİK KAYNAKLARIN YÖNETİMİ:
-- Elektrik kesintilerinde, modern araçların (örneğin 2024 Dacia Sandero Stepway gibi) 12V çakmaklık soketleri veya USB portları, akü bitene kadar radyoyu dinlemek veya iletişim cihazlarını şarj etmek için kritik bir güç istasyonudur. Aracı kapalı alanda uzun süre çalıştırmayın (karbonmonoksit zehirlenmesi riski).
-- Şebeke çöktüğünde akıllı telefonların (örneğin Xiaomi Redmi Note 12) "Ultra Güç Tasarruf" modunu aktif edin.
-- Telefonların flaş ışığını gece manuel olarak SOS ritminde (3 kısa, 3 uzun, 3 kısa yanıp sönme) kullanarak görsel sinyal verin.
+SOS Sinyali Uygulama Yöntemleri:
+1. Sinyal Kodu: 3 kısa, 3 uzun, 3 kısa sinyal (. . .  - - -  . . .).
+2. Düdük ile Sesli Sinyal: Düdükle 3 kısa düdük, 3 uzun düdük, 3 kısa düdük çalınır. Bağırmak yerine düdük çalmak sesinizi 1 kilometreye kadar duyurur ve nefes tasarrufu sağlar.
+3. El Feneri veya Telefon Flaşı ile Işıklı Sinyal: Gece veya karanlıkta fener veya telefon flaşı ile 3 kısa flaş, 3 uzun flaş, 3 kısa flaş yapılır.
+4. Enkaz Altında Vurarak Sinyal: Arama-kurtarma ekiplerinin "Sesimi duyan var mı?" çağrısına cevap verirken kalorifer borusuna veya duvara 3 kısa, 3 uzun, 3 kısa vuruş yapılır.
+5. Sinyal Tekrar Disiplini: Sinyal verildikten sonra 1 dakika boyunca sessizce dinleme yapılır ve yardım gelene kadar ritmik olarak tekrarlanır.
+6. PMR 446 Telsiz Acil Durum Kanalı: Telsizlerde Kanal 1 (446.00625 MHz) acil durum iletişim frekansıdır. Bataryayı korumak için her saat başı ilk 5 dakika dinleme yapılır.
+7. Gündüz Görsel Sinyal (SOS Aynası): Ekiplerin ve helikopterin dikkatini çekmek için ayna, CD arkası veya parlak folyo güneşe tutularak ritmik ışık yansıtılır.
+8. Güç Yönetimi: Elektrik kesildiğinde araç çakmaklığı veya akıllı telefonun Ultra Güç Tasarruf modu kullanılarak iletişim cihazları açık tutulur.
