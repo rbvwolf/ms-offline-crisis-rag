@@ -1,5 +1,5 @@
 """
-api.py — FastAPI Web Sunucusu: Crisis RAG Web Arayüzü
+api.py: FastAPI Web Sunucusu: Crisis RAG Web Arayüzü
 
 BAŞLATMA (Proje dizininden):
     python src/ui/api.py
@@ -81,7 +81,7 @@ log = logging.getLogger("crisis_rag")
 
 app = FastAPI(
     title="Crisis RAG API",
-    description="Çevrim Dışı Kriz Asistanı — Yerel LLM Web API",
+    description="Çevrim Dışı Kriz Asistanı: Yerel LLM Web API",
     version="1.0.0",
 )
 
@@ -133,7 +133,7 @@ def _initialize_system(loop: asyncio.AbstractEventLoop):
 async def startup():
     from state_manager import StateManager
     log.info("=" * 55)
-    log.info("  Crisis RAG — Web Sunucusu Başladı")
+    log.info("  Crisis RAG: Web Sunucusu Başladı")
     log.info(f"  Statik dosyalar: {WEB_DIR}")
     log.info("  Envanter sistemi bağımsız olarak başlatıldı.")
     # Initialize StateManager immediately so inventory works before LLM is loaded
@@ -251,7 +251,7 @@ async def post_chat(request: Request):
                 yield f"data: {data_json}\n\n"
             elif p_type == "done":
                 log.info(f"⚡ [LLM YANITI COMPLETED] SSE akışı tamamlandı ({token_count} token iletildi).")
-                print(f"(*) Stream tamamlandi — {token_count} token SSE uzerinden gonderildi")
+                print(f"(*) Stream tamamlandi: {token_count} token SSE uzerinden gonderildi")
                 yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

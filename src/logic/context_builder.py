@@ -6,8 +6,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from core.config import MAX_DISTANCE, MAX_CONTEXT_CHARS, MIN_USEFUL_WORDS
 
 # Maximum allowed distance spread from the best chunk.
-# E.g. if best chunk is 0.78, no chunk worse than 0.78+0.10 = 0.88 is used.
-_MAX_RELATIVE_DISTANCE = 0.12  # strict relative distance filter to prevent noise chunks
+_MAX_RELATIVE_DISTANCE = 0.25  # allows complementary context chunks into prompt
 
 
 def clean_chunk_text(text: str) -> str:
@@ -73,10 +72,8 @@ def build_context(retrieved_docs: list) -> tuple[str, list]:
         if distance > MAX_DISTANCE:
             continue
 
-        # Relative gate: skip chunks that are much further than the best hit
-        # We exempt TXT chunks from this gate because they are hand-curated
-        # priority knowledge and should not be dropped just because a PDF scored better.
-        if source_type != 'txt' and distance > relative_cap:
+        # Relative gate: skip chunks that are further than relative_cap
+        if distance > relative_cap:
             continue
 
 
@@ -104,7 +101,7 @@ def build_context(retrieved_docs: list) -> tuple[str, list]:
         chunks.append(cleaned)
         total_chars += len(cleaned)
 
-        # Citation metadata object — contains source, page, type, distance, and text
+        # Citation metadata object: contains source, page, type, distance, and text
         src_name = source_file or "rehber.txt"
         name = os.path.splitext(src_name)[0]
         if len(name) > 45:

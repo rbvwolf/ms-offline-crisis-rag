@@ -1,5 +1,5 @@
 """
-generator.py — LLM orchestration for the Offline Crisis Assistant.
+generator.py: LLM orchestration for the Offline Crisis Assistant.
 
 Responsibilities:
   - Load/unload the phi-3.5-mini model via Foundry Local
@@ -35,7 +35,7 @@ from core.config import (
     MAX_GENERATION_TOKENS,
     CACHE_HIT_THRESHOLD, MIN_USEFUL_WORDS, TOP_K
 )
-MAX_GENERATION_CHARS = 3500
+MAX_GENERATION_CHARS = 2500
 from retriever import open_db, retrieve_content
 from query_processor import expand_query
 from context_builder import build_context
@@ -168,7 +168,7 @@ def _strip_inventory_blocks(text: str, state_manager: StateManager) -> str:
     """
     Finds all <INVENTORY>...</INVENTORY> blocks in the LLM output, persists
     each one via StateManager, then removes the blocks from the visible response.
-    The user never sees raw JSON — they only see the clean Turkish answer.
+    The user never sees raw JSON; they only see the clean Turkish answer.
     """
     def handle_match(m):
         state_manager.update_from_inventory_block(m.group(1))
@@ -212,8 +212,7 @@ def _build_system_prompt(context_text: str, state_manager: StateManager,
                          inject_inventory: bool = False,
                          user_question: str = "") -> str:
     """
-    Assembles a compact, direct system prompt.
-    Rules designed for Phi-3.5-mini (SLM): short imperatives, no template echoing.
+    Assembles the system prompt.
     """
     state_section = ""
     if inject_inventory:
@@ -222,21 +221,18 @@ def _build_system_prompt(context_text: str, state_manager: StateManager,
             state_section = f"\n{state_block}\n"
 
     inventory_rule = (
-        "7. Kullanici envanterini yalnizca rasyon/stok sorgularinda kullan."
+        "- Kullanici envanterini yalnizca rasyon/stok sorgularinda kullan."
         if inject_inventory and state_section
         else ""
     )
 
-    system_prompt = f"""Sen afet ve kriz durumlarinda Turkce yanit veren uzman Kriz Asistanisin.
-Gorevin BILGI KAYNAKLARI metinlerini kullanarak kullanicinin sorusuna net, dogru ve anlasilir bir Turkce yanit vermektir.
+    system_prompt = f"""Sen afet ve kriz durumlarinda yardimci olan bir Acil Durum Kriz Asistanisin.
+Gorevin: BILGI KAYNAKLARI metinlerini kullanarak kullanicinin sorusuna Turkce, anlasilir, dogru ve net bir yanit sunmaktir.
 {state_section}
 Kurallar:
-- Soruya dogrudan Turkce yanit ver. "Yanit:", "Format:", "Giris:" gibi basliklar yazma.
-- SADECE VE YALNIZCA BILGI KAYNAKLARI'ndaki GERCEK BILGILERI KULLAN. Metinde sorulan spesifik konu GECMIYORSA kendi zihninden uydurma veya genel kultur cevabi VERME. Metinde cevabi yoksa YALNIZCA "Veritabanımda bu bilgi bulunmamaktadır." yanitini ver.
-- Numarali liste veya maddeler kullan; adimlari net acikla.
-- Yildiz (*), cift yildiz (**), alt cizgi (_) kullanma; sadece duz metin yaz.
-- Mors alfabesi soruldugunda SOS (. . .  - - -  . . .) veya MORS sinyallerini nokta (.) ve cizgi (-) isaretleriyle acikca goster. Rastgele harfler uydurma.
-- Tekrara dusme.
+1. SADECE BILGI KAYNAKLARI icindeki bilgileri kullan. Bilgi kaynaklarinda olmayan bilgileri uydurma.
+2. Adimlari ve onemli talimatlari acik, anlasilir maddeler halinde sirala.
+3. Gereksiz tekrarlardan kacin, sade ve net bir Turkce ile yanit ver.
 {inventory_rule}
 
 BILGI KAYNAKLARI:
@@ -327,7 +323,7 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
             (msg["content"] for msg in reversed(chat_history) if msg["role"] == "user"),
             ""
         )
-        # Don't contextualize with inventory commands — they'd corrupt the query
+        # Don't contextualize with inventory commands: they would corrupt the query
         if last_user_msg and not last_user_msg.lower().startswith('envanter'):
             search_query = f"{last_user_msg} {user_question}"
             print(f"(*) Contextualized search query: '{search_query}'")
@@ -362,7 +358,7 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
     for i, ck in enumerate(cleaned_chunks, 1):
         print(f"    [Chunk {i}]: {ck[:120].strip()}")
 
-    # 6. Build prompt — inject inventory ONLY for ration/supply related queries
+    # 6. Build prompt: inject inventory ONLY for ration/supply related queries
     inject_inv = _is_inventory_relevant(user_question)
     if inject_inv:
         print("(*) Inventory state injected into prompt (ration/supply query)")
@@ -411,17 +407,23 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
                 raw_tokens.append(delta)
                 token_count += len(delta)
 
-                # Early stop: if model outputted the [BITTI] token, kill stream
-                last_chars = "".join(raw_tokens[-7:])
-                if "[BITTI]" in last_chars:
-                    print("\n[+] Answer completed.")
+                # Early stop: if model outputted stop tokens, kill stream
+                last_chars = "".join(raw_tokens[-20:])
+                _STOP_MARKERS = (
+                    '[BITTI]', '\n---', '\n\nUnutmayın', '\nUnutmayın', '\nUnutma',
+                    '\n\nÖzetle', '\nÖzetle', '\n\nBu yönergeler', '\nBu yönergeler',
+                    '\n\nHer iki teknik', '\nHer iki teknik', '\nNot:', '\nKoruyucu',
+                    '01:00', '02:00', 'Şimdi Yanı', 'Yanıt Formatı'
+                )
+                if any(m in last_chars for m in _STOP_MARKERS):
+                    print("\n[+] Answer completed (stop marker hit).")
                     break
 
         print()
         raw_response = "".join(raw_tokens)
 
         if not raw_response.strip():
-            # Model returned empty output — can happen after [BITTI] cut-off
+            # Model returned empty output: can happen after [BITTI] cut-off
             return "Bir sorun olustu, lutfen tekrar deneyin.", False
 
         # Strip [BITTI] marker and artifact annotations before storing in history.
@@ -762,18 +764,21 @@ def answer_query_generator(
                     continue
                 delta = chunk.choices[0].delta.content
                 if delta:
-                    if '[BITTI]' in delta or 'Yanıt Formatı' in delta or 'Şimdi Yanı' in delta:
+                    _STOP_MARKERS = (
+                        '[BITTI]', '\n---', '\n\nUnutmayın', '\nUnutmayın', '\nUnutma',
+                        '\n\nÖzetle', '\nÖzetle', '\n\nBu yönergeler', '\nBu yönergeler',
+                        '\n\nHer iki teknik', '\nHer iki teknik', '\nNot:', '\nKoruyucu',
+                        '01:00', '02:00', 'Şimdi Yanı', 'Yanıt Formatı'
+                    )
+                    last_chars = "".join(raw_tokens[-12:]) + delta
+                    if any(m in last_chars for m in _STOP_MARKERS):
                         break
                     print(delta, end="", flush=True)
                     raw_tokens.append(delta)
                     token_count += len(delta)
 
                     if _has_repetition_loop(raw_tokens):
-                        print("\n[*] Repetition loop detected — terminating stream.")
-                        break
-
-                    last_chars = "".join(raw_tokens[-12:])
-                    if "[BITTI]" in last_chars or "Şimdi Yanı" in last_chars or "Yanıt Formatı" in last_chars:
+                        print("\n[*] Repetition loop detected: terminating stream.")
                         break
 
                     yield {"type": "token", "token": delta}

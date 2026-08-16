@@ -1,10 +1,10 @@
 """
-retriever.py — Hybrid search (Vector + FTS5 BM25) with Reciprocal Rank Fusion.
+retriever.py: Hybrid search (Vector + FTS5 BM25) with Reciprocal Rank Fusion.
 
 Architecture:
-  open_db()          — open persistent connection, load sqlite-vec, ensure tables exist
-  retrieve_content() — embed query → vector KNN search + FTS5 BM25 search → RRF fusion
-                       → top-k results enriched with source metadata
+  open_db(): open persistent connection, load sqlite-vec, ensure tables exist
+  retrieve_content(): embed query -> vector KNN search + FTS5 BM25 search -> RRF fusion
+                      -> top-k results enriched with source metadata
 
 Why Hybrid?
   - Vector search captures *semantic* similarity (great for paraphrases, synonyms).
@@ -31,13 +31,13 @@ def _prepare_fts_query(raw_query: str) -> tuple[str, str]:
     Converts a raw query into two FTS5 MATCH expressions: AND and OR versions.
 
     AND version:  all significant tokens must appear in the document.
-                  High precision — avoids matching unrelated docs on a single word.
+                  High precision: avoids matching unrelated docs on a single word.
     OR version:   any token can match, scored by BM25.
-                  High recall — fallback when AND yields nothing.
+                  High recall: fallback when AND yields nothing.
 
     The FTS5 table uses 'unicode61 remove_diacritics 2' tokenizer, which
     automatically normalises diacritics on both stored text and queries.
-    We do NOT manually normalise Turkish chars — the tokenizer handles it.
+    We do NOT manually normalise Turkish chars; the tokenizer handles it.
 
     Returns (and_query, or_query).
     """
@@ -258,7 +258,7 @@ def _enrich_results(fused: list, vector_dist_map: dict, fts_results: list, db: s
             if vec_dist > _FTS_HARD_VECTOR_CAP:
                 continue
 
-            # Beyond soft max_distance — only keep if FTS also matched
+            # Beyond soft max_distance: only keep if FTS also matched
             if vec_dist > max_distance:
                 if chunk_id not in fts_chunk_ids:
                     continue
@@ -287,35 +287,29 @@ def _enrich_results(fused: list, vector_dist_map: dict, fts_results: list, db: s
             page_number  = meta[1] if meta else -1
             source_type  = meta[2] if meta and len(meta) > 2 else 'pdf'
 
-            results.append((text, vec_dist, source_file, page_number, source_type))
+            # Hand-curated TXT protocols receive a proportional relevance boost (-0.12)
+            effective_dist = (vec_dist - 0.12) if (source_type == 'txt' and vec_dist <= 0.70) else vec_dist
+
+            results.append((text, effective_dist, source_file, page_number, source_type))
         except Exception as e:
             continue
 
-    # Source diversity: cap chunks per source file
+    # Source diversity: cap chunks per source file (max 1 for TXT, max 2 for PDF)
     file_counts: dict[str, int] = {}
     filtered: list = []
     results.sort(key=lambda r: r[1])
     for r in results:
         fname = r[2] or '__unknown__'
-        if file_counts.get(fname, 0) < _MAX_CHUNKS_PER_FILE:
+        stype = r[4] if len(r) > 4 else 'pdf'
+        max_allowed = 1 if stype == 'txt' else _MAX_CHUNKS_PER_FILE
+        if file_counts.get(fname, 0) < max_allowed:
             filtered.append(r)
             file_counts[fname] = file_counts.get(fname, 0) + 1
     results = filtered
 
-    # Smart Dynamic Relevance Ranking:
-    # 1. Relevant hand-curated TXT chunks (dist <= 0.78) get a -0.15 distance discount so clean protocol guides take top priority over noisy text.
-    # 2. Irrelevant TXT chunks (dist > 0.78) receive NO discount, preventing topic leakage.
-    # 3. Sort purely by effective distance: relevant TXT chunks rank FIRST at the top,
-    #    followed immediately by high-quality PDF chunks, without forcing unrelated TXT chunks.
-    boosted_results = []
-    for r in results:
-        text, dist, src, pg, st = r
-        effective_dist = (dist - 0.15) if (st == 'txt' and dist <= 0.78) else dist
-        boosted_results.append((text, effective_dist, src, pg, st))
-
     # Sort strictly by effective distance ascending
-    boosted_results.sort(key=lambda r: r[1])
-    final_results = boosted_results[:top_k]
+    results.sort(key=lambda r: r[1])
+    final_results = results[:top_k]
 
     return final_results
 

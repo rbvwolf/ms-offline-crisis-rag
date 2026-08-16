@@ -1,5 +1,5 @@
 """
-query_processor.py — Query expansion and normalization utilities.
+query_processor.py: Query expansion and normalization utilities.
 
 Extracted from generator.py to keep that file focused on LLM orchestration.
 
@@ -13,30 +13,34 @@ Public API:
 # Values: ASCII synonyms that help the embedding model find relevant chunks.
 # ---------------------------------------------------------------------------
 _QUERY_EXPANSIONS = {
-    "deprem":       "deprem anında hayatta kalma çök kapan tutun enkaz sarsıntı",
-    "sarsinti":     "deprem anında hayatta kalma çök kapan tutun enkaz sarsıntı",
-    "sarsıntı":     "deprem anında hayatta kalma çök kapan tutun enkaz sarsıntı",
+    "deprem":       "deprem sarsıntı çök kapan tutun tahliye bina",
+    "sarsinti":     "deprem sarsıntı çök kapan tutun",
+    "sarsıntı":     "deprem sarsıntı çök kapan tutun",
     "yangin":       "yangın söndürme kaçış tahliye duman",
-    "su":           "su arıtma çökeltme filtreleme kaynatma içme",
+    "su":           "su arıtma çökeltme filtreleme kaynatma klorlama içme",
+    "kaynat":       "su arıtma kaynatma filtreleme klorlama",
+    "klor":         "su klorlama arıtma dezenfeksiyon çamaşır suyu",
     "ilk yardim":   "ilk yardım acil müdahale yaralı",
     "mors":         "mors alfabesi sos acil sinyal telsiz pmr",
     "alfabesi":     "mors alfabesi sos acil sinyal telsiz pmr",
-    "kirik":        "kırık kol bacak atel sabitleme müdahale",
-    "yanik":        "yanık deri soğutma sarma müdahale",
-    "kanama":       "kanama yara baskı uygulama durdurma",
-    "enkaz":        "enkaz altında kalma çök kapan tutun nefes kontrolü hayatta kalma deprem",
-    "rasyon":       "rasyon yiyecek su günlük plan hesaplama",
-    "barinak":      "barınak sığınak çadır kurma afet",
-    "telsiz":       "telsiz haberleşme frekans PMR acil iletişim",
-    "psikoloji":    "psikolojik destek sakinleştirme panik stres",
-    "cocuk":        "çocuk sakinleştirme panik korku psikolojik",
+    "sos":          "mors alfabesi sos acil yardım çağrısı",
+    "kirik":        "kırık çıkık atel sabitleme ilk yardım",
+    "kırık":        "kırık çıkık atel sabitleme ilk yardım",
+    "yanik":        "yanık soğuk su sarma ilk yardım",
+    "kanama":       "kanama yara baskı bandaj turnike",
+    "enkaz":        "enkaz altında kalma çök kapan tutun nefes ritmik ses",
+    "rasyon":       "rasyon yiyecek su günlük plan stok",
+    "barinak":      "barınak sığınak çadır kurma",
+    "telsiz":       "telsiz haberleşme frekans PMR acil kanal 1",
+    "psikoloji":    "psikolojik destek sakinleştirme panik korku",
+    "cocuk":        "çocuk psikolojik sakinleştirme nefes masal",
 }
 
 
 def normalize_for_matching(s: str) -> str:
     """
     Converts Turkish-specific characters to ASCII equivalents.
-    Used ONLY for keyword matching — NOT for embedding (embedding needs real chars).
+    Used ONLY for keyword matching (NOT for embedding; embedding needs real chars).
     """
     return (
         s.replace('\u0131', 'i').replace('\u0130', 'i')   # ı İ
@@ -50,8 +54,8 @@ def normalize_for_matching(s: str) -> str:
 
 def expand_query(query: str) -> str:
     """
-    Appends domain expansion terms if the query contains any emergency keyword
-    (ASCII-normalized), regardless of sentence length.
+    Appends domain root terms so FTS5 and embedding models match
+    inflected Turkish words and hand-curated protocol files.
     """
     q = query.strip().lower()
     q_norm = normalize_for_matching(q)
@@ -62,10 +66,9 @@ def expand_query(query: str) -> str:
             expansions_added.append(expansion)
 
     if expansions_added:
-        # Use unique terms only
         combined_exp = " ".join(dict.fromkeys(" ".join(expansions_added).split()))
         expanded = f"{query} {combined_exp}"
-        print(f"(*) Query expanded: '{query}' -> '{expanded[:75]}...'")
+        print(f"(*) Query expanded: '{query}' -> '{expanded[:80]}...'")
         return expanded
 
     return query

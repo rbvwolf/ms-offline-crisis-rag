@@ -1,5 +1,6 @@
 """
-txt_processor.py — Ingests curated .txt knowledge files into the vector DB.
+txt_processor.py: Ingests curated .txt knowledge files into the vector DB.
+Processes files in data/raw_txts/ that have not yet been ingested.
 
 TXT files are treated as HIGHER PRIORITY than PDF chunks because they contain
 hand-curated, project-specific knowledge written for this assistant.  Priority
@@ -96,7 +97,7 @@ def ingest_txts_to_sqlite():
     print("(*) Connecting to DB and checking processed files")
     db = sqlite3.connect(DB_PATH)
 
-    # Ensure required tables exist (idempotent — safe to call multiple times)
+    # Ensure required tables exist (idempotent: safe to call multiple times)
     db.execute("""
         CREATE TABLE IF NOT EXISTS processed_files (
             filename TEXT PRIMARY KEY,
@@ -119,7 +120,7 @@ def ingest_txts_to_sqlite():
         db.commit()
         print("(*) Migrated chunks_metadata: added source_type column")
     except Exception:
-        pass  # Column already exists — fine
+        pass  # Column already exists: fine
 
     db.commit()
 

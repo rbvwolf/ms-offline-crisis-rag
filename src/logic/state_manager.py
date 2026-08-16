@@ -1,7 +1,7 @@
 """
-state_manager.py — Persistent user state (inventory, profile) for the Offline Crisis Assistant.
+state_manager.py: Persistent user state (inventory, profile) for the Offline Crisis Assistant.
 
-Inventory extraction is done with Python regex — NO second LLM call is made.
+Inventory extraction is done with Python regex; NO second LLM call is made.
 The LLM is only shown the resulting state block injected into the prompt.
 
 Public API used by generator.py:
@@ -387,7 +387,7 @@ class StateManager:
         """
         Attempts to extract inventory items from natural language using regex.
         Returns a dict {item_key: 'qty unit'} or empty dict.
-        Does NOT call the LLM — 100% offline, zero battery cost.
+        Does NOT call the LLM: 100% offline, zero battery cost.
 
         Handles patterns like:
           '10 litre su var'       -> {su: '10 litre'}
@@ -476,18 +476,21 @@ class StateManager:
 
 def deduplicate_paragraphs(text: str) -> str:
     """
-    Removes near-duplicate paragraphs and sentences from LLM output (common in SLMs like Phi-3.5).
-    Compares word sets of each sentence to prune redundant repeats, while preserving list items.
+    Suppresses verbatim and near-duplicate paragraph repetitions emitted by Phi-3.5-mini.
+    Operates at paragraph and list item level without breaking Morse codes or abbreviations.
     """
-    paragraphs = text.split('\n')
-    cleaned_paragraphs = []
-    seen_word_sets = []
-    seen_exact = set()
+    if not text or not text.strip():
+        return text
 
-    for para in paragraphs:
-        stripped = para.strip()
+    lines = text.split('\n')
+    seen_exact = set()
+    seen_word_sets = []
+    cleaned_lines = []
+
+    for line in lines:
+        stripped = line.strip()
         if not stripped:
-            cleaned_paragraphs.append('')
+            cleaned_lines.append('')
             continue
 
         # Normalize line (strip list numbers like '1. ', '- ') for duplicate checks
@@ -497,12 +500,12 @@ def deduplicate_paragraphs(text: str) -> str:
             continue
 
         words = set(re.findall(r'\w+', clean_norm))
-        if len(words) >= 3:
+        if len(words) >= 4:
             is_dup = False
             for prev_words in seen_word_sets:
                 intersection = len(words & prev_words)
                 smaller_len = min(len(words), len(prev_words))
-                if smaller_len > 0 and (intersection / smaller_len) >= 0.75:
+                if smaller_len > 0 and (intersection / smaller_len) >= 0.85:
                     is_dup = True
                     break
             if is_dup:
@@ -510,38 +513,9 @@ def deduplicate_paragraphs(text: str) -> str:
             seen_word_sets.append(words)
 
         seen_exact.add(norm_item)
+        cleaned_lines.append(stripped)
 
-        sentences = re.split(r'(?<=[.!?])\s+', stripped)
-        valid_sentences = []
-
-        for sent in sentences:
-            s_stripped = sent.strip()
-            if not s_stripped:
-                continue
-            norm_s = re.sub(r'\s+', ' ', s_stripped.lower())
-            if norm_s in seen_exact:
-                continue
-
-            words = set(re.findall(r'\w+', s_stripped.lower()))
-            if len(words) >= 4:
-                is_dup = False
-                for prev_words in seen_word_sets:
-                    intersection = len(words & prev_words)
-                    smaller_len = min(len(words), len(prev_words))
-                    if smaller_len > 0 and (intersection / smaller_len) >= 0.75:
-                        is_dup = True
-                        break
-                if is_dup:
-                    continue
-                seen_word_sets.append(words)
-
-            seen_exact.add(norm_s)
-            valid_sentences.append(s_stripped)
-
-        if valid_sentences:
-            cleaned_paragraphs.append(' '.join(valid_sentences))
-
-    result = '\n'.join(cleaned_paragraphs)
+    result = '\n'.join(cleaned_lines)
     return re.sub(r'\n{3,}', '\n\n', result).strip()
 
 
@@ -587,7 +561,7 @@ def _strip_quoted_echoes(text: str) -> str:
 def _strip_form_hallucinations(text: str) -> str:
     """
     Phi-3.5-mini sometimes generates 'X: Evet', 'X: Hayır', 'X: Kes' lines
-    that mimic a questionnaire/checklist form — these are hallucinations that
+    that mimic a questionnaire/checklist form; these are hallucinations that
     appear when the model sees structured context.  Strip them.
     """
     lines = text.split('\n')
@@ -651,17 +625,6 @@ def clean_llm_response(text: str, user_question: str = "") -> str:
         if any(re.search(p, stripped, re.IGNORECASE) for p in nonsense_patterns):
             continue
         # Skip trailing SOS ritmi lines on non-Morse queries
-        if not is_mors and re.search(r'\(.*SOS.*3 kısa.*\)', stripped, re.IGNORECASE):
-            continue
-        
-        # Correct mangled Morse notation if this is a Morse query
-        if is_mors:
-            stripped = re.sub(r'^[-\s–—]*S\s*\(.*?\)', '- S = . . . (3 Kısa Sinyal)', stripped, flags=re.IGNORECASE)
-            stripped = re.sub(r'^[-\s–—]*O\s*\(.*?\)', '- O = - - - (3 Uzun Sinyal)', stripped, flags=re.IGNORECASE)
-            stripped = re.sub(r'^[-\s–—]*M\s*\(.*?\)', '- M = - - (2 Uzun Sinyal)', stripped, flags=re.IGNORECASE)
-            stripped = re.sub(r'^[-\s–—]*R\s*\(.*?\)', '- R = . - . (Kısa Uzun Kısa)', stripped, flags=re.IGNORECASE)
-            stripped = re.sub(r'^[-\s–—]*SOS\s*\(.*?\)', '- SOS = . . .  - - -  . . . (3 Kısa, 3 Uzun, 3 Kısa Sinyal)', stripped, flags=re.IGNORECASE)
-
         clean_lines.append(stripped)
 
     text = '\n'.join(clean_lines)
