@@ -1,5 +1,5 @@
 """
-eval_benchmark.py — Automated System Evaluation & Benchmark Test Suite
+eval_benchmark.py: Automated System Evaluation & Benchmark Test Suite
 Designed for Microsoft Foundry Local RAG Internship Assessment.
 
 Tests:

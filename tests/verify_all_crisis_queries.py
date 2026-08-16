@@ -1,5 +1,5 @@
 """
-verify_all_crisis_queries.py — Comprehensive Quality Gate & Context Test
+verify_all_crisis_queries.py: Comprehensive Quality Gate & Context Test
 Verifies that all 13+ genuine crisis domain questions pass Quality Gate cleanly
 and return rich context with exact citations, while out-of-domain queries fail safely.
 """
