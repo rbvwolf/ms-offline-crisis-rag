@@ -1,5 +1,5 @@
 /**
- * emergency.js — Acil Durum Modu (Header Panic Mode & Panik Paneli)
+ * emergency.js: Acil Durum Modu (Header Panic Mode & Panik Paneli)
  *
  * Özellikler:
  *  - Tam ekran zengin acil müdahale rehberi (Boşluk kalmayacak şekilde 4 zengin kart)
@@ -192,7 +192,7 @@ function _buildEmergencyOverlayHTML() {
           
           <!-- Ortalanmış SOS Kutusu -->
           <div id="sosFlasherBox" class="sos-flasher">
-            • • • &nbsp; — — — &nbsp; • • • (SOS)
+            • • • &nbsp; - - - &nbsp; • • • (SOS)
           </div>
 
           <!-- SOS Nedir Rehberi -->
@@ -290,12 +290,12 @@ function _startRealMorseSos() {
     { duration: 200, isFlash: true, type: 'short', label: '• SİNYAL (KISA)' },
     { duration: 500, isFlash: false },
 
-    // O: — — —
-    { duration: 600, isFlash: true, type: 'long', label: '— SİNYAL (UZUN)' },
+    // O: - - -
+    { duration: 600, isFlash: true, type: 'long', label: '- SİNYAL (UZUN)' },
     { duration: 200, isFlash: false },
-    { duration: 600, isFlash: true, type: 'long', label: '— SİNYAL (UZUN)' },
+    { duration: 600, isFlash: true, type: 'long', label: '- SİNYAL (UZUN)' },
     { duration: 200, isFlash: false },
-    { duration: 600, isFlash: true, type: 'long', label: '— SİNYAL (UZUN)' },
+    { duration: 600, isFlash: true, type: 'long', label: '- SİNYAL (UZUN)' },
     { duration: 500, isFlash: false },
 
     // S: • • •
@@ -321,7 +321,7 @@ function _startRealMorseSos() {
           box.textContent = step.label || 'SİNYAL!';
         } else {
           box.className = 'sos-flasher';
-          box.textContent = '• • •   — — —   • • • (SOS)';
+          box.textContent = '• • •   - - -   • • • (SOS)';
         }
       }, cumulativeTime);
       _sosTimeouts.push(t);
@@ -351,7 +351,7 @@ function _toggleSosFlasher() {
   if (_sosActive) {
     _clearSosTimeouts();
     box.className = 'sos-flasher';
-    box.textContent = '• • •   — — —   • • • (SOS)';
+    box.textContent = '• • •   - - -   • • • (SOS)';
     btn.textContent = '⚡ MORS SOS ÇAKARINI BAŞLAT';
     return;
   }

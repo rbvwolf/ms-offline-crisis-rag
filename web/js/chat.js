@@ -1,5 +1,5 @@
 /**
- * chat.js — Sohbet yonetimi (persisted history, backend stream ready)
+ * chat.js: Sohbet yonetimi (persisted history, backend stream ready)
  *
  * Persists chat history in localStorage under 'crisis_chat_history'
  * so F5 refresh does NOT wipe the chat.
@@ -75,7 +75,7 @@ function appendMessageDOM(role, html, shouldSave = true) {
   headerRow.style.cssText = 'display:flex;align-items:center;gap:0.5rem;';
   headerRow.appendChild(label);
 
-  // Copy button — only for assistant messages
+  // Copy button: only for assistant messages
   if (!isUser) {
     const copyBtn = document.createElement('button');
     copyBtn.title = 'Kopyala';
@@ -583,7 +583,7 @@ function checkLlmStatus() {
         return;
       }
 
-      // Model yükleniyor — SSE push akışını dinle
+      // Model yükleniyor: SSE push akışını dinle
       dot.style.background = 'var(--accent-red)';
       text.style.color      = 'var(--accent-red)';
       text.textContent      = 'Yerel LLM Yükleniyor...';

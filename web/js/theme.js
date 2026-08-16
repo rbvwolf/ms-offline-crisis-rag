@@ -1,5 +1,5 @@
 /**
- * theme.js — Tema / Mod yönetimi
+ * theme.js: Tema / Mod yönetimi
  *
  * Desteklenen modlar: "dark" | "light" | "cli"
  * localStorage'da:

@@ -1,5 +1,5 @@
 /**
- * child.js — Çocuk Modu (Child Crisis Protocol & Calming Assistant)
+ * child.js: Çocuk Modu (Child Crisis Protocol & Calming Assistant)
  *
  * Özellikler:
  *  - data/kisa_hikayeler/ dizininden dinamik masal yükleme API'si (`/api/child-stories`)

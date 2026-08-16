@@ -1,9 +1,9 @@
 /* =====================================================================
-   Crisis RAG — CSS Custom Properties (Theme Variables)
+   Crisis RAG: CSS Custom Properties (Theme Variables)
    3 MOD:
-   [data-mode="dark"]   → Koyu Modern UI (default, Zinc/Material Design 3)
-   [data-mode="light"]  → Açık Modern UI (beyaz/indigo)
-   [data-mode="cli"]    → OLED Güç Tasarrufu CLI (saf siyah / fosfor yeşili)
+   [data-mode="dark"]   -> Koyu Modern UI (default, Zinc/Material Design 3)
+   [data-mode="light"]  -> Açık Modern UI (beyaz/indigo)
+   [data-mode="cli"]    -> OLED Güç Tasarrufu CLI (saf siyah / fosfor yeşili)
    ===================================================================== */
 
 /* ----- DARK MODERN (default) ----- */
@@ -25,8 +25,8 @@
   --text-primary:        #e4e1ed;
   --text-secondary:      #c7c4d7;
   --text-accent:         #c0c1ff;   /* indigo/primary */
-  --text-accent-2:       #4edea3;   /* emerald/secondary — LLM active */
-  --text-accent-3:       #ffb783;   /* amber/tertiary — RAG panel */
+  --text-accent-2:       #4edea3;   /* emerald/secondary: LLM active */
+  --text-accent-3:       #ffb783;   /* amber/tertiary: RAG panel */
   --text-warning:        #f59e0b;
   --text-danger:         #ef4444;
   --text-muted:          #908fa0;

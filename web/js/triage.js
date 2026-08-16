@@ -1,5 +1,5 @@
 /**
- * triage.js — Acil Triyaj Karar Ağacı (START Triyaj Sihirbazı)
+ * triage.js: Acil Triyaj Karar Ağacı (START Triyaj Sihirbazı)
  *
  * Çalışma şekli:
  *  - TAMAMEN offline, SIFIR LLM çağrısı
@@ -59,7 +59,7 @@ const TRIAGE_TREE = {
   perfusion: {
     id: 'perfusion',
     question: 'Nabzı veya kapiler dolum süresi nasıl?',
-    hint: 'Tırnak yatağına basın, bırakın — pembe dönüş 2 saniyeden uzun sürüyor mu?',
+    hint: 'Tırnak yatağına basın, bırakın: pembe dönüş 2 saniyeden uzun sürüyor mu?',
     options: [
       { label: '⚡ 2 saniyeden uzun / nabız yok', next: 'result_kirmizi' },
       { label: '✅ 2 saniyeden kısa / nabız var', next: 'mental' },
@@ -79,7 +79,7 @@ const TRIAGE_TREE = {
   // ── Sonuçlar ────────────────────────────────────────────────────────────────
   result_yesil: {
     result: 'YEŞİL',
-    label: '🟢 YEŞİL — Geciktirilebilir',
+    label: '🟢 YEŞİL - Geciktirilebilir',
     color: '#22c55e',
     bg: 'color-mix(in srgb, #22c55e 12%, transparent)',
     border: '#16a34a',
@@ -92,7 +92,7 @@ const TRIAGE_TREE = {
   },
   result_siyah: {
     result: 'SİYAH',
-    label: '⬛ SİYAH — Yaşayamaz',
+    label: '⬛ SİYAH - Yaşayamaz',
     color: '#6b7280',
     bg: 'color-mix(in srgb, #6b7280 12%, transparent)',
     border: '#4b5563',
@@ -105,7 +105,7 @@ const TRIAGE_TREE = {
   },
   result_kirmizi: {
     result: 'KIRMIZI',
-    label: '🔴 KIRMIZI — Acil Müdahale',
+    label: '🔴 KIRMIZI - Acil Müdahale',
     color: '#ef4444',
     bg: 'color-mix(in srgb, #ef4444 12%, transparent)',
     border: '#dc2626',
@@ -118,7 +118,7 @@ const TRIAGE_TREE = {
   },
   result_kirmizi_airway: {
     result: 'KIRMIZI',
-    label: '🔴 KIRMIZI — Acil (Hava Yolu Açıldı)',
+    label: '🔴 KIRMIZI - Acil (Hava Yolu Açıldı)',
     color: '#ef4444',
     bg: 'color-mix(in srgb, #ef4444 12%, transparent)',
     border: '#dc2626',
@@ -131,7 +131,7 @@ const TRIAGE_TREE = {
   },
   result_sari: {
     result: 'SARI',
-    label: '🟡 SARI — Geciktirilebilir (2. Öncelik)',
+    label: '🟡 SARI - Geciktirilebilir (2. Öncelik)',
     color: '#eab308',
     bg: 'color-mix(in srgb, #eab308 12%, transparent)',
     border: '#ca8a04',

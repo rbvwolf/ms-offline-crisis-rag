@@ -1,5 +1,5 @@
 /**
- * inventory.js — Görsel Envanter Yönetimi (Kare Kartlar, In-Page Modallar, Canlı Telemetri Logu)
+ * inventory.js: Görsel Envanter Yönetimi (Kare Kartlar, In-Page Modallar, Canlı Telemetri Logu)
  *
  * Yenilikler:
  *  1. Buton Sırası: [ − (Çıkart) ]  [ 🗑 (Sil) ]  [ + (Ekle) ]

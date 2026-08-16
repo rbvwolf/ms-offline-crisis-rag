@@ -1,5 +1,5 @@
 /**
- * library.js — Kütüphane & Okuyucu (AI-Bypass Belge, Kitap ve Masal Okuyucusu)
+ * library.js: Kütüphane & Okuyucu (AI-Bypass Belge, Kitap ve Masal Okuyucusu)
  *
  * Özellikler:
  *  - Tab Sıralaması:
@@ -191,7 +191,7 @@ function _injectLibraryStyles() {
       gap: 0.5rem;
     }
 
-    /* Sekme (Tab) Bar — Masallar İLK SIRA */
+    /* Sekme (Tab) Bar: Masallar İLK SIRA */
     .lib-tabs {
       display: flex;
       gap: 0.375rem;

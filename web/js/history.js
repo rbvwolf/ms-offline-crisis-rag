@@ -1,5 +1,5 @@
 /**
- * history.js — CLI tarzı komut geçmişi
+ * history.js: CLI tarzı komut geçmişi
  * Klavyedeki ↑/↓ ile geçmiş komutları çağırır.
  * Enter ile mesaj gönderir ve history'ye ekler.
  */

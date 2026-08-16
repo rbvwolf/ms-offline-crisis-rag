@@ -1,5 +1,5 @@
 /**
- * logs.js — Sistem Günlükleri (Live Terminal System Log Viewer)
+ * logs.js: Sistem Günlükleri (Live Terminal System Log Viewer)
  *
  * Özellikler:
  *  - FastAPI sunucusu ve RAG telemetrisinden canlı log çekme (GET /api/logs)
