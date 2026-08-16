@@ -1,10 +1,10 @@
 DOĞADA VE AFETTE ALTERNATİF SU BULMA VE ARITMA TEKNİKLERİ
 
-KİRLİ SUYU GÜVENLİ HALE GETİRME (ARITMA ADIMLARI):
-- Çökeltme: Bulutlu veya çamurlu suyu bir kapta en az 1-2 saat bekleterek ağır partiküllerin dibe çökmesini sağlayın. Üstteki berrak suyu başka bir kaba yavaşça aktarın.
-- Filtreleme: Aktardığınız suyu temiz bir pamuklu kumaştan, kahve filtresinden veya birkaç kat yapılmış kağıt havludan geçirerek ince partikülleri süzün.
-- Kaynatma (En Güvenilir Yöntem): Filtrelenmiş suyu KESİNLİKLE en az 10 dakika boyunca fokurdayarak kaynatın. Bu işlem tüm bakteri, virüs ve parazitleri öldürür.
-- Kimyasal Arıtma: Kaynatma imkanı yoksa, 1 litre suya 2 damla kokusuz, katkısız ev tipi çamaşır suyu (sadece sodyum hipoklorit içeren) damlatın ve 30 dakika bekleyin.
+SUYU ARITMA VE İÇİLEBİLİR HALE GETİRME ADIMLARI:
+- Çökeltme: Çamurlu veya bulanık suyu bir kapta 1-2 saat bekleterek partiküllerin dibe çökmesini sağlayın. Üstteki duru suyu başka kaba aktarın.
+- Filtreleme: Suyu temiz bir bezden veya kahve filtresinden geçirerek süzün.
+- Kaynatma: Suyu en az 10 dakika boyunca kaynatarak mikropları tamamen yok edin.
+- Kimyasal Arıtma: Kaynatma yapılamıyorsa 1 litre suya 2 damla katkısız çamaşır suyu damlatıp 30 dakika bekletin.
 
 ALTERNATİF SU KAYNAKLARI BULMA:
 - Yoğuşma (Solar Damıtma): Temiz bir poşeti, güneş gören yeşil yapraklı bir dalın üzerine geçirip ağzını sıkıca bağlayın. Güneşin etkisiyle terleyen yaprakların suyu poşetin dibinde birikecektir.

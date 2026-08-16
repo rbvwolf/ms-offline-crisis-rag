@@ -249,20 +249,18 @@ function cleanStreamOutput(text) {
   cleaned = cleaned.replace(/\[BITTI\].*$/gis, '');
   // Remove exact prompt leak headers & hallucinated preamble prefixes ONLY
   cleaned = cleaned.replace(/^(?:Programını\s+kullanmaktadır:?|Programı:?|Yanıt\s+Formatı:?|Şimdi\s+Yanıt\s+Verin:?)\s*/gim, '');
-  // Fix concatenated common Turkish words
-  cleaned = cleaned.replace(/kadartutunduğunuz/gi, 'kadar tutunduğunuz');
-  cleaned = cleaned.replace(/yanınaçökün/gi, 'yanına çökün');
-  cleaned = cleaned.replace(/ışıkçakması/gi, 'ışık çakması');
+  // Strip cut-off dangling stop headers at the very end of stream
+  cleaned = cleaned.replace(/\n*(?:Bilinç Bozukluklar.*|Enkaz Altında Kalırsan.*|Bu konuda veritaban[ıi]mda.*|Verilen bilgileri.*|Bu ilkeleri.*|Bu yöntemleri.*)\s*$/gi, '');
   // Strip nonsense lines
   cleaned = cleaned.replace(/.*yalanları söyler.*/gi, '');
   cleaned = cleaned.replace(/.*kötülük için yalanları.*/gi, '');
   cleaned = cleaned.replace(/.*Hazırlık durumunu söyledikçe.*/gi, '');
   cleaned = cleaned.replace(/.*Amatörler, bu m.*/gi, '');
-  // Strip markdown bold/italic markers that the model emits despite being told not to
-  cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, '$1');  // **bold** → plain
-  cleaned = cleaned.replace(/\*([^*]+)\*/g, '$1');       // *italic* → plain
-  cleaned = cleaned.replace(/__([^_]+)__/g, '$1');       // __bold__ → plain
-  cleaned = cleaned.replace(/_([^_]+)_/g, '$1');         // _italic_ → plain
+  // Strip markdown bold/italic markers
+  cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, '$1');
+  cleaned = cleaned.replace(/\*([^*]+)\*/g, '$1');
+  cleaned = cleaned.replace(/__([^_]+)__/g, '$1');
+  cleaned = cleaned.replace(/_([^_]+)_/g, '$1');
   return cleaned.trim();
 }
 

@@ -301,7 +301,7 @@ def _enrich_results(fused: list, vector_dist_map: dict, fts_results: list, db: s
     for r in results:
         fname = r[2] or '__unknown__'
         stype = r[4] if len(r) > 4 else 'pdf'
-        max_allowed = 1 if stype == 'txt' else _MAX_CHUNKS_PER_FILE
+        max_allowed = 2 if stype == 'txt' else _MAX_CHUNKS_PER_FILE
         if file_counts.get(fname, 0) < max_allowed:
             filtered.append(r)
             file_counts[fname] = file_counts.get(fname, 0) + 1

@@ -35,7 +35,6 @@ from core.config import (
     MAX_GENERATION_TOKENS,
     CACHE_HIT_THRESHOLD, MIN_USEFUL_WORDS, TOP_K
 )
-MAX_GENERATION_CHARS = 2500
 from retriever import open_db, retrieve_content
 from query_processor import expand_query
 from context_builder import build_context
@@ -212,30 +211,24 @@ def _build_system_prompt(context_text: str, state_manager: StateManager,
                          inject_inventory: bool = False,
                          user_question: str = "") -> str:
     """
-    Assembles the system prompt.
+    Assembles the system prompt. Balanced: 1-sentence intro + step-by-step actions.
     """
-    state_section = ""
+    inventory_block = ""
     if inject_inventory:
         state_block = state_manager.get_context_block()
         if state_block:
-            state_section = f"\n{state_block}\n"
+            inventory_block = f"\nKullanici Envanter Durumu:\n{state_block}\n"
 
-    inventory_rule = (
-        "- Kullanici envanterini yalnizca rasyon/stok sorgularinda kullan."
-        if inject_inventory and state_section
-        else ""
-    )
+    system_prompt = f"""You are an emergency crisis response AI assistant.
+Answer the user's question accurately in clear Turkish using ONLY the Verified Knowledge Sources below.
 
-    system_prompt = f"""Sen afet ve kriz durumlarinda yardimci olan bir Acil Durum Kriz Asistanisin.
-Gorevin: BILGI KAYNAKLARI metinlerini kullanarak kullanicinin sorusuna Turkce, anlasilir, dogru ve net bir yanit sunmaktir.
-{state_section}
-Kurallar:
-1. SADECE BILGI KAYNAKLARI icindeki bilgileri kullan. Bilgi kaynaklarinda olmayan bilgileri uydurma.
-2. Adimlari ve onemli talimatlari acik, anlasilir maddeler halinde sirala.
-3. Gereksiz tekrarlardan kacin, sade ve net bir Turkce ile yanit ver.
-{inventory_rule}
-
-BILGI KAYNAKLARI:
+Instructions:
+1. Start with a brief 1-sentence opening explanation, followed by the essential step-by-step instructions from the Sources.
+2. Format the steps clearly using bullet points (-) or numbered list (1., 2.).
+3. Stay strictly focused on the user's question. Stop immediately once the relevant instructions are provided.
+4. Do NOT repeat sections, and do NOT include unrelated procedures, document names, or meta-commentary.
+{inventory_block}
+Verified Knowledge Sources:
 {context_text}"""
 
     return system_prompt
@@ -396,8 +389,8 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
             if time.time() - start_time > STREAM_TIMEOUT_SECONDS:
                 print("\n[!] Generation time limit reached.")
                 break
-            if token_count >= MAX_GENERATION_CHARS:
-                print("\n[!] Character limit reached.")
+            if token_count >= MAX_GENERATION_TOKENS:
+                print("\n[!] Token limit reached.")
                 break
             if not chunk.choices:
                 continue
@@ -408,15 +401,21 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
                 token_count += len(delta)
 
                 # Early stop: if model outputted stop tokens, kill stream
-                last_chars = "".join(raw_tokens[-20:])
+                last_chars = ("".join(raw_tokens[-30:]) + delta).lower()
                 _STOP_MARKERS = (
-                    '[BITTI]', '\n---', '\n\nUnutmayın', '\nUnutmayın', '\nUnutma',
-                    '\n\nÖzetle', '\nÖzetle', '\n\nBu yönergeler', '\nBu yönergeler',
-                    '\n\nHer iki teknik', '\nHer iki teknik', '\nNot:', '\nKoruyucu',
-                    '01:00', '02:00', 'Şimdi Yanı', 'Yanıt Formatı'
+                    '[bitti]', '\n---', 'unutmayın', 'unutma',
+                    'özetle', 'bu yönergeler', 'her iki teknik', 'not:',
+                    'bu bilgileri', 'verilen bilgileri', 'bu yöntemleri', 'bu ilkeleri', 'bu protokol',
+                    'bilinç bozukluklarında', 'kizilay_ilk_yardim', '.indd', 'güncelleniyor:',
+                    'bu konuda veritabanımda güvenilir bilgi bulunmuyor',
+                    'bu konuda veritabanında güvenilir bilgi bulunmuyor'
                 )
                 if any(m in last_chars for m in _STOP_MARKERS):
                     print("\n[+] Answer completed (stop marker hit).")
+                    break
+
+                if _has_repetition_loop(raw_tokens):
+                    print("\n[*] Repetition loop detected: terminating stream.")
                     break
 
         print()
@@ -451,9 +450,7 @@ def answer_query(user_question, model, embeddings_model, db, chat_history,
 
 
 def _safe_close_stream(stream):
-    """Safely closes an ONNX/Foundry streaming iterator to release C++ model lock immediately."""
-    if stream is None:
-        return
+    """Safely closes a streaming response if the object supports it."""
     if hasattr(stream, 'close'):
         try:
             stream.close()
@@ -463,24 +460,28 @@ def _safe_close_stream(stream):
 
 def _has_repetition_loop(raw_tokens: list) -> bool:
     """
-    Detects if the LLM has entered a degeneration repetition loop
-    (e.g. 'dedektörünün dedektörünün dedektörünün').
-    Only triggers on 3-word phrase repeats or 5+ single non-stopword repeats.
+    Detects if the LLM has entered a repetition loop or is repeating bullet points / headers.
     """
-    if len(raw_tokens) < 8:
+    if len(raw_tokens) < 10:
         return False
+
+    full_text = "".join(raw_tokens).lower()
+    lines = [l.strip("-* 0123456789.:\t").strip() for l in full_text.split('\n') if len(l.strip()) >= 15]
+
+    # If the exact same line/step appears 2+ times in the generated response
+    if len(lines) != len(set(lines)):
+        return True
+
     recent_text = " ".join(raw_tokens[-40:]).lower()
     words = [w for w in recent_text.split() if len(w) >= 3]
     if len(words) >= 8:
-        # Check if a 3-word sequence repeats 3 times
-        for i in range(len(words) - 5):
+        for i in range(len(words) - 4):
             trio = f"{words[i]} {words[i+1]} {words[i+2]}"
-            if len(trio) >= 8 and recent_text.count(trio) >= 3:
+            if len(trio) >= 10 and recent_text.count(trio) >= 2:
                 return True
-        # Check if a single non-stopword of length >= 4 repeats 5+ times in recent 20 words
-        _STOPWORDS = {'veya', 'gibi', 'bina', 'icin', 'için', 'daha', 'sonra', 'olan', 'durun', 'gidin', 'yapin', 'yapın', 'alın', 'alin'}
         last_word = words[-1]
-        if len(last_word) >= 4 and last_word not in _STOPWORDS and words[-20:].count(last_word) >= 5:
+        _STOPWORDS = {'veya', 'gibi', 'bina', 'icin', 'için', 'daha', 'sonra', 'olan', 'durun', 'gidin', 'yapin', 'yapın', 'alın', 'alin'}
+        if len(last_word) >= 4 and last_word not in _STOPWORDS and words[-20:].count(last_word) >= 4:
             return True
     return False
 
@@ -757,21 +758,24 @@ def answer_query_generator(
             for chunk in stream:
                 if time.time() - start_time > STREAM_TIMEOUT_SECONDS:
                     break
-                if token_count >= MAX_GENERATION_CHARS:
-                    print("\n[!] Character limit reached.")
+                if token_count >= MAX_GENERATION_TOKENS:
+                    print("\n[!] Token limit reached.")
                     break
                 if not chunk.choices:
                     continue
                 delta = chunk.choices[0].delta.content
                 if delta:
                     _STOP_MARKERS = (
-                        '[BITTI]', '\n---', '\n\nUnutmayın', '\nUnutmayın', '\nUnutma',
-                        '\n\nÖzetle', '\nÖzetle', '\n\nBu yönergeler', '\nBu yönergeler',
-                        '\n\nHer iki teknik', '\nHer iki teknik', '\nNot:', '\nKoruyucu',
-                        '01:00', '02:00', 'Şimdi Yanı', 'Yanıt Formatı'
+                        '[bitti]', '\n---', 'unutmayın', 'unutma',
+                        'özetle', 'bu yönergeler', 'her iki teknik', 'not:',
+                        'bu bilgileri', 'verilen bilgileri', 'bu yöntemleri', 'bu ilkeleri', 'bu protokol',
+                        'bilinç bozukluklarında', 'kizilay_ilk_yardim', '.indd', 'güncelleniyor:',
+                        'bu konuda veritabanımda güvenilir bilgi bulunmuyor',
+                        'bu konuda veritabanında güvenilir bilgi bulunmuyor'
                     )
-                    last_chars = "".join(raw_tokens[-12:]) + delta
+                    last_chars = ("".join(raw_tokens[-30:]) + delta).lower()
                     if any(m in last_chars for m in _STOP_MARKERS):
+                        print("\n[+] Stream stop marker hit: cutting stream early.")
                         break
                     print(delta, end="", flush=True)
                     raw_tokens.append(delta)

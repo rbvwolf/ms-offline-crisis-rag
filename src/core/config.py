@@ -22,19 +22,19 @@ CHUNK_OVERLAP = 100         # chars of overlap between consecutive chunks
 
 # --- Retrieval ---
 MAX_DISTANCE = 0.85         # chunks beyond this distance are discarded from context
-QUALITY_GATE_DISTANCE = 0.85  # if even the best chunk exceeds this, return "not found"
+QUALITY_GATE_DISTANCE = 0.65  # if even the best chunk exceeds this, return "not found"
 MIN_USEFUL_WORDS = 10       # cleaned chunks shorter than this are skipped (noise filter)
 
 # Hybrid search pool sizes (results before fusion)
 VECTOR_K = 40               # candidate chunks fetched from vector (sqlite-vec) search
 FTS_K = 40                  # candidate chunks fetched from FTS5 BM25 keyword search
 RRF_K = 60                  # Reciprocal Rank Fusion constant (higher = less rank bias)
-TOP_K = 3                  # balanced top chunks (high precision, zero context clutter)
+TOP_K = 4                   # top chunks: up to 2 per TXT file now allowed
 
 # --- Generation ---
-MAX_CONTEXT_CHARS = 1800    # clean, uncluttered context sent to the LLM
-MAX_GENERATION_TOKENS = 350  # Balanced, complete answers without rambling loops
-STREAM_TIMEOUT_SECONDS = 180 # Stream timeout
+MAX_CONTEXT_CHARS = 1800    # context budget for 3 clean chunks
+MAX_GENERATION_TOKENS = 1800  # character budget for LLM output (token_count += len(delta))
+STREAM_TIMEOUT_SECONDS = 180  # Stream timeout
 MAX_HISTORY_TURNS = 2       # number of back-and-forth conversation turns kept in memory
 
 # --- Query Cache ---

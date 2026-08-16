@@ -520,11 +520,12 @@ def deduplicate_paragraphs(text: str) -> str:
 
 
 def fix_turkish_pdf_spacing(text: str) -> str:
-    """Fixes PDF extraction artifacts where spaces are inserted before/after Turkish diacritics."""
-    text = re.sub(r'(\b\w{1,8})\s+([ğşütıoöçĞŞÜTİÖÇ][a-zçğıöşü]*\b)', r'\1\2', text)
+    """Fixes PDF extraction artifacts where single characters are isolated from word roots."""
+    text = re.sub(r'(\b\w+)\s+([ğşüıöçĞŞİÖÇ])\s+(\w+\b)', r'\1\2\3', text)
     text = text.replace("bulundu ğu", "bulunduğu")
     text = text.replace("a ğır", "ağır")
     text = text.replace("Çalı şma", "Çalışma")
+    text = text.replace("çalı şma", "çalışma")
     text = text.replace("Şiddet Dağılım Yanı", "Şiddet Dağılışı")
     text = text.replace("Şimdi Yanı", "")
     text = text.replace("Yanıt Formatı ve Kurallı:", "")
@@ -562,12 +563,12 @@ def _strip_form_hallucinations(text: str) -> str:
     """
     Phi-3.5-mini sometimes generates 'X: Evet', 'X: Hayır', 'X: Kes' lines
     that mimic a questionnaire/checklist form; these are hallucinations that
-    appear when the model sees structured context.  Strip them.
+    appear when the model sees structured context. Strip them.
     """
     lines = text.split('\n')
     clean_lines = []
     _FORM_SUFFIXES = (': Evet', ': Hayır', ': Kes', ': hayır', ': evet', ': kes')
-    _FORM_KEYWORDS = ('süzün:', 'yapi lan', 'yapılan', 'programini', 'programını')
+    _FORM_KEYWORDS = ('süzün:', 'yapi lan', 'yapılan', 'programini', 'programını', '.indd', 'kizilay_ilk_yardim')
     for line in lines:
         stripped = line.strip()
         if any(stripped.endswith(s) for s in _FORM_SUFFIXES):
@@ -595,15 +596,37 @@ def clean_llm_response(text: str, user_question: str = "") -> str:
 
     # Concatenated Turkish word fixes
     word_fixes = {
-        r'kadartutunduğunuz': 'kadar tutunduğunuz',
-        r'yanınaçökün': 'yanına çökün',
-        r'ışıkçakması': 'ışık çakması',
-        r'mors alfabe,': 'Mors alfabesi,',
-        r'mors alfabe için': 'Mors alfabesi için',
-        r'sınır listesi': 'sinyal listesi',
+        r'\balanaçökün\b': 'alana çökün',
+        r'\bhazırolun\b': 'hazır olun',
+        r'\bkaçağışüphesi\b': 'kaçağı şüphesi',
+        r'\bbinadançıkın\b': 'binadan çıkın',
+        r'\bdüzolarak\b': 'düz olarak',
+        r'\büzeriniörterek\b': 'üzerini örterek',
+        r'\bCihazınüzerindeki\b': 'Cihazın üzerindeki',
+        r'\bcihazınüzerindeki\b': 'cihazın üzerindeki',
+        r'\bateşitamamen\b': 'ateşi tamamen',
+        r'\bbaşkabirçıkış\b': 'başka bir çıkış',
+        r'\baçmadanönce\b': 'açmadan önce',
+        r'\belinizintersiyle\b': 'elinizin tersiyle',
+        r'\bdiğertaraftadır\b': 'diğer taraftadır',
+        r'\bsarsıntıdurana\b': 'sarsıntı durana',
+        r'\bkoluçoksıcaksa\b': 'kolu çok sıcaksa',
+        r'\byanınaçökün\b': 'yanına çökün',
+        r'\bkadartutunduğunuz\b': 'kadar tutunduğunuz',
+        r'\bışıkçakması\b': 'ışık çakması',
+        r'\bsarsıntısonrası\b': 'sarsıntı sonrası',
+        r'\bartçısarsıntılara\b': 'artçı sarsıntılara',
+        r'\bmors alfabe,\b': 'Mors alfabesi,',
+        r'\bmors alfabe için\b': 'Mors alfabesi için',
+        r'\bsınır listesi\b': 'sinyal listesi',
     }
     for old_w, new_w in word_fixes.items():
         text = re.sub(old_w, new_w, text, flags=re.IGNORECASE)
+
+    # If the text already has content, strip spurious trailing fallback statements or cut-off headers
+    if len(text.strip().split('\n')) > 2:
+        text = re.sub(r'\n*Bu konuda veritaban[ıi]mda g[uü]venilir bilgi bulunmuyor\.?\s*$', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\n*(Bilinç Bozukluklar|Enkaz Altında|Giriş|Not:?|Özet:?)\s*$', '', text, flags=re.IGNORECASE)
 
     # Nonsense hallucination filtering
     nonsense_patterns = [

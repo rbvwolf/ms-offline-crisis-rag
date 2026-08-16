@@ -22,8 +22,8 @@ def clean_chunk_text(text: str) -> str:
     text = re.sub(r'^\s*\d+\s*\n', '', text)
     text = text.replace('Ø', '-')
 
-    # Fix PDF font extraction spaces before/after Turkish diacritics
-    text = re.sub(r'(\b\w{1,8})\s+([ğşütıoöçĞŞÜTİÖÇ][a-zçğıöşü]*\b)', r'\1\2', text)
+    # Fix isolated detached single-letter diacritics from PDF font extraction (e.g. 'a ğ ır' -> 'ağır')
+    text = re.sub(r'(\b\w+)\s+([ğşüıöçĞŞİÖÇ])\s+(\w+\b)', r'\1\2\3', text)
     text = text.replace("bulundu ğu", "bulunduğu")
     text = text.replace("a ğır", "ağır")
     text = text.replace("çalı şma", "çalışma")
