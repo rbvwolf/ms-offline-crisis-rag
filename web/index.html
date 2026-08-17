@@ -213,12 +213,13 @@
       </button>
       <!-- 3-way mod secici -->
       <div style="display:flex;align-items:center;gap:0.25rem;border:1px solid var(--border-main);padding:0.25rem 0.375rem;border-radius:0.5rem;background:var(--bg-card);">
-        <button class="mode-btn" id="modeBtn-dark"  title="Koyu Modern">&#127769; Koyu</button>
-        <button class="mode-btn" id="modeBtn-light" title="Acik Modern">&#9728; A&#231;&#305;k</button>
-        <button class="mode-btn" id="modeBtn-cli"   title="Guc Tasarrufu CLI">&#9889; CLI</button>
+        <button class="mode-btn" id="modeBtn-dark"  title="Koyu Modern" style="display:flex;align-items:center;gap:0.25rem;"><span class="material-symbols-outlined" style="font-size:14px;">dark_mode</span><span>Koyu</span></button>
+        <button class="mode-btn" id="modeBtn-light" title="Açık Modern" style="display:flex;align-items:center;gap:0.25rem;"><span class="material-symbols-outlined" style="font-size:14px;">light_mode</span><span>Açık</span></button>
+        <button class="mode-btn" id="modeBtn-cli"   title="Güç Tasarrufu CLI" style="display:flex;align-items:center;gap:0.25rem;"><span class="material-symbols-outlined" style="font-size:14px;">terminal</span><span>CLI</span></button>
       </div>
-      <button id="emergencyPanicBtn" style="padding:0.375rem 1rem;border-radius:0.5rem;background:var(--accent-red);color:#fff;font-family:var(--font-mono);font-size:0.8125rem;border:none;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:0.375rem;">
-        🚨 Acil Durum Modu
+      <button id="emergencyPanicBtn" style="padding:0.375rem 0.875rem;border-radius:0.5rem;background:var(--accent-red);color:#fff;font-family:var(--font-mono);font-size:0.8125rem;border:none;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:0.375rem;transition:opacity 0.15s ease;">
+        <span class="material-symbols-outlined" style="font-size:1.125rem;">emergency</span>
+        <span>Acil Durum Modu</span>
       </button>
     </div>
   </header>
@@ -325,19 +326,27 @@
       </div><!-- /#chatArea -->
 
       <!-- ENVANTER PANELİ -->
-      <div id="inventoryPanel" style="display:none;flex-direction:column;flex:1;width:100%;height:100%;padding:1.25rem;overflow-y:auto;">
-        <div class="inv-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;padding-bottom:0.875rem;border-bottom:1px solid var(--border-main);">
-          <h2 style="font-family:var(--font-sans);font-size:1rem;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:0.5rem;">
-            📦 Afet Envanterim
+      <div id="inventoryPanel" style="display:none;flex-direction:column;flex:1;width:100%;height:100%;padding:1.5rem;overflow-y:auto;">
+        <div class="inv-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:1px solid var(--border-main);">
+          <h2 style="font-family:var(--font-sans);font-size:1.125rem;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:0.625rem;">
+            <span class="material-symbols-outlined" style="font-size:1.5rem;color:var(--accent-primary);">inventory_2</span>
+            <span>Afet Envanterim</span>
           </h2>
-          <div class="inv-header-actions" style="display:flex;gap:0.5rem;">
-            <button class="inv-clear-all-btn" id="invClearAllBtn" style="padding:0.375rem 0.75rem;background:transparent;color:var(--text-secondary);border:1px solid var(--border-card);border-radius:0.5rem;font-family:var(--font-mono);font-size:0.75rem;cursor:pointer;">🗑 Tümünü Sıfırla</button>
-            <button class="inv-add-btn" id="invAddBtn" style="padding:0.375rem 0.75rem;background:var(--accent-primary);color:#fff;border:none;border-radius:0.5rem;font-family:var(--font-mono);font-size:0.75rem;font-weight:600;cursor:pointer;">+ Malzeme Ekle</button>
+          <div class="inv-header-actions" style="display:flex;gap:0.625rem;">
+            <button class="inv-clear-all-btn" id="invClearAllBtn" style="padding:0.45rem 0.875rem;background:transparent;color:var(--text-secondary);border:1px solid var(--border-card);border-radius:0.5rem;font-family:var(--font-mono);font-size:0.8125rem;cursor:pointer;display:flex;align-items:center;gap:0.375rem;">
+              <span class="material-symbols-outlined" style="font-size:16px;">delete_sweep</span>
+              <span>Tümünü Sıfırla</span>
+            </button>
+            <button class="inv-add-btn" id="invAddBtn" style="padding:0.45rem 1rem;background:var(--accent-primary);color:#fff;border:none;border-radius:0.5rem;font-family:var(--font-mono);font-size:0.8125rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:0.375rem;">
+              <span class="material-symbols-outlined" style="font-size:16px;">add</span>
+              <span>Malzeme Ekle</span>
+            </button>
           </div>
         </div>
-        <div id="inventoryCards" style="display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-start;padding:0.25rem 0;"></div>
-        <div style="font-family:var(--font-mono);font-size:0.6875rem;color:var(--text-muted);padding-top:1rem;border-top:1px solid var(--border-card);margin-top:auto;line-height:1.5;">
-          ℹ️ Sohbette "envanter ekle su 5 litre" veya "su sil" komutları da çalışır. Hem arayüz hem sohbet aynı veritabanını günceller.
+        <div id="inventoryCards" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:1.25rem;align-items:stretch;padding:0.25rem 0;"></div>
+        <div style="font-family:var(--font-mono);font-size:0.75rem;color:var(--text-muted);padding-top:1.25rem;border-top:1px solid var(--border-card);margin-top:auto;line-height:1.5;display:flex;align-items:center;gap:0.5rem;">
+          <span class="material-symbols-outlined" style="font-size:16px;color:var(--accent-tertiary);">info</span>
+          <span>Sohbette "envanter ekle su 5 litre" veya "su sil" komutları da çalışır. Hem arayüz hem sohbet aynı yerel veritabanını günceller.</span>
         </div>
       </div>
 
@@ -531,8 +540,10 @@
         </div>
         <select id="settingTopK" style="background:var(--bg-canvas);border:1px solid var(--border-card);border-radius:0.375rem;color:var(--accent-secondary);font-size:0.75rem;padding:0.25rem 0.5rem;outline:none;">
           <option value="2">2 Chunk</option>
-          <option value="3" selected>3 Chunk (Varsayılan)</option>
+          <option value="3">3 Chunk</option>
+          <option value="4" selected>4 Chunk (Varsayılan)</option>
           <option value="5">5 Chunk (Derin)</option>
+          <option value="6">6 Chunk</option>
         </select>
       </div>
 

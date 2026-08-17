@@ -138,18 +138,21 @@ function _buildEmergencyOverlayHTML() {
     <!-- Header -->
     <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #ef4444;padding-bottom:0.75rem;">
       <div style="display:flex;align-items:center;gap:0.875rem;">
-        <span style="font-size:2rem;line-height:1;">🚨</span>
+        <div style="width:2.75rem;height:2.75rem;border-radius:0.5rem;background:rgba(239,68,68,0.15);border:1px solid #ef4444;display:flex;align-items:center;justify-content:center;">
+          <span class="material-symbols-outlined" style="font-size:1.75rem;color:#ef4444;">emergency</span>
+        </div>
         <div>
           <h1 style="font-family:var(--font-mono);font-size:1.25rem;font-weight:900;color:#ef4444;margin:0;letter-spacing:0.02em;">
-            ACİL DURUM MODU (PANİK PANELİ)
+            ACİL DURUM VE MÜDAHALE PROTOKOLLERİ
           </h1>
           <p style="font-family:var(--font-mono);font-size:0.75rem;color:#aaaaaa;margin-top:0.25rem;">
-            Aşırı panik, ışık azlığı ve acil müdahale durumları için hayati kılavuzlar.
+            Kriz, şebeke kesintisi ve afet durumlarında anlık müdahale rehberi.
           </p>
         </div>
       </div>
-      <button id="closeEmergencyPanicBtn" style="padding:0.5rem 1rem;background:#ef4444;color:#ffffff;border:none;border-radius:0.5rem;font-family:var(--font-mono);font-size:0.8125rem;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:0.5rem;">
-        ✕ ÇIKIŞ (ESC)
+      <button id="closeEmergencyPanicBtn" style="padding:0.5rem 1rem;background:#ef4444;color:#ffffff;border:none;border-radius:0.5rem;font-family:var(--font-mono);font-size:0.8125rem;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:0.5rem;transition:opacity 0.15s ease;">
+        <span class="material-symbols-outlined" style="font-size:1.125rem;">close</span>
+        <span>Kapat (ESC)</span>
       </button>
     </div>
 
@@ -160,23 +163,33 @@ function _buildEmergencyOverlayHTML() {
       <div class="panic-card panic-card-danger">
         <div style="display:flex;flex-direction:column;gap:0.75rem;">
           <div style="display:flex;align-items:center;gap:0.625rem;border-bottom:1px solid rgba(239,68,68,0.3);padding-bottom:0.5rem;">
-            <span style="font-size:1.5rem;">🔴</span>
+            <span class="material-symbols-outlined" style="font-size:1.35rem;color:#ef4444;">medical_services</span>
             <h2 style="font-family:var(--font-mono);font-size:1.0625rem;font-weight:800;color:#ef4444;margin:0;">
-              1. ACİL TRİYAJ KARAR SİHİRBAZI
+              1. Acil Triyaj ve Önceliklendirme
             </h2>
           </div>
           <p style="font-family:var(--font-mono);font-size:0.8125rem;color:#dddddd;line-height:1.6;margin:0;">
-            Yaralının hayati öncelik durumunu (KIRMIZI / SARI / YEŞİL / SİYAH) 3 soruda hızlıca tespit edin.
+            Yaralının hayati risk derecesini belirleyip müdahale ve tahliye önceliğini saptayın.
           </p>
-          <div style="padding:0.75rem;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:0.5rem;font-family:var(--font-mono);font-size:0.75rem;color:#ffaaaa;line-height:1.5;">
-            <strong>Müdahale Sıralaması:</strong><br>
-            • 🔴 KIRMIZI: Ağır yaralı, solunum güçlüğü ➔ İLK MÜDAHALE<br>
-            • 🟡 SARI: Kırık/Kanama, bilinci açık ➔ İKİNCİL MÜDAHALE<br>
-            • 🟢 YEŞİL: Ayakta yaralı, hafif sıyrık ➔ ERTELENEBİLİR
+          <div style="padding:0.75rem;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:0.5rem;font-family:var(--font-mono);font-size:0.75rem;color:#ffaaaa;line-height:1.6;">
+            <div style="font-weight:700;margin-bottom:0.35rem;color:#ffffff;">Müdahale Öncelik Sıralaması:</div>
+            <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.2rem;">
+              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;"></span>
+              <strong>Kırmızı (1. Öncelik):</strong> Ağır yaralı, solunum/dolaşım riski &rarr; İlk Müdahale
+            </div>
+            <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.2rem;">
+              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b;"></span>
+              <strong>Sarı (2. Öncelik):</strong> Kırık ve kanama, bilinci açık &rarr; İkincil Müdahale
+            </div>
+            <div style="display:flex;align-items:center;gap:0.4rem;">
+              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;"></span>
+              <strong>Yeşil (3. Öncelik):</strong> Ayakta yaralı, hafif sıyrık &rarr; Ertelenebilir
+            </div>
           </div>
         </div>
         <button id="panicStartTriageBtn" class="panic-btn-action panic-btn-red">
-          🚨 TRİYAJ SİHİRBAZINI BAŞLAT
+          <span class="material-symbols-outlined" style="font-size:1.125rem;">checklist</span>
+          <span>Triyaj Değerlendirmesini Başlat</span>
         </button>
       </div>
 
@@ -184,24 +197,25 @@ function _buildEmergencyOverlayHTML() {
       <div class="panic-card panic-card-danger">
         <div style="display:flex;flex-direction:column;gap:0.625rem;">
           <div style="display:flex;align-items:center;gap:0.625rem;border-bottom:1px solid rgba(239,68,68,0.3);padding-bottom:0.5rem;">
-            <span style="font-size:1.5rem;">📢</span>
+            <span class="material-symbols-outlined" style="font-size:1.35rem;color:#ef4444;">sensors</span>
             <h2 style="font-family:var(--font-mono);font-size:1.0625rem;font-weight:800;color:#ef4444;margin:0;">
-              2. SOS SİNYALİ & MORS ÇAKARI
+              2. SOS Sinyali ve Mors Çakarı
             </h2>
           </div>
           
           <!-- Ortalanmış SOS Kutusu -->
           <div id="sosFlasherBox" class="sos-flasher">
-            • • • &nbsp; - - - &nbsp; • • • (SOS)
+            &bull; &bull; &bull; &nbsp; &mdash; &mdash; &mdash; &nbsp; &bull; &bull; &bull; (SOS)
           </div>
 
           <!-- SOS Nedir Rehberi -->
           <div style="padding:0.625rem 0.75rem;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);border-radius:0.5rem;font-family:var(--font-mono);font-size:0.75rem;color:#fcd34d;line-height:1.5;">
-            💡 <strong>SOS Sinyali Rehberi:</strong> Uluslararası yardım çağrısıdır. 3 Kısa (200ms), 3 Uzun (600ms), 3 Kısa (200ms) ritmiyle çalışır. Enkaz altında el feneri, ekran flaşı veya düdük vurarak arama-kurtarma ekiplerine konumunuzu bildirmeyi sağlar.
+            <strong>Sinyal Standardı:</strong> Uluslararası acil yardım çağrısıdır. 3 Kısa (200ms), 3 Uzun (600ms), 3 Kısa (200ms) ritmiyle çalışır. El feneri, ekran flaşı, düdük veya mekanik boru vuruşlarıyla arama-kurtarma ekiplerine konum bildirmek için kullanılır.
           </div>
         </div>
         <button id="panicToggleSosBtn" class="panic-btn-action panic-btn-amber">
-          ⚡ MORS SOS ÇAKARINI BAŞLAT
+          <span class="material-symbols-outlined" style="font-size:1.125rem;">flash_on</span>
+          <span>Mors SOS Çakarını Başlat</span>
         </button>
       </div>
 
@@ -209,21 +223,21 @@ function _buildEmergencyOverlayHTML() {
       <div class="panic-card panic-card-warning">
         <div style="display:flex;flex-direction:column;gap:0.625rem;">
           <div style="display:flex;align-items:center;gap:0.625rem;border-bottom:1px solid rgba(245,158,11,0.3);padding-bottom:0.5rem;">
-            <span style="font-size:1.5rem;">💧</span>
+            <span class="material-symbols-outlined" style="font-size:1.35rem;color:#f59e0b;">water_drop</span>
             <h2 style="font-family:var(--font-mono);font-size:1.0625rem;font-weight:800;color:#f59e0b;margin:0;">
-              3. ACİL SU ARITMA (HAYATİ YÖNTEMLER)
+              3. Acil Su Arıtma Yöntemleri
             </h2>
           </div>
           <ul style="font-family:var(--font-mono);font-size:0.8125rem;color:#dddddd;line-height:1.6;margin:0;padding-left:1.25rem;">
-            <li><strong>1. Süzme:</strong> Bulanık suyu tişört, tülbent veya kum-kömür katmanından süzün.</li>
-            <li><strong>2. Kaynatma:</strong> Mikropları yok etmek için en az <strong>1-3 dakika fokurdatarak</strong> kaynatın.</li>
-            <li><strong>3. Çamaşır Suyu:</strong> 1 Litre berrak suya <strong>2 DAMLA kokusuz çamaşır suyu</strong> ekleyip 30 dk bekletin.</li>
-            <li><strong>4. SODIS (Güneşle Arıtma):</strong> Saydam PET şişedeki suyu 6 saat doğrudan güneş altında tutun.</li>
-            <li><strong>5. Yağmur Suyu:</strong> İlk 10 dakikada akan tozu eleyip temiz kapta toplayın.</li>
+            <li><strong>1. Süzme:</strong> Bulanık suyu temiz pamuklu kumaş veya tülbentten geçirerek partiküllerden arındırın.</li>
+            <li><strong>2. Kaynatma:</strong> Biyolojik mikroorganizmaları yok etmek için en az <strong>1-3 dakika fokurdatın</strong>.</li>
+            <li><strong>3. Klorlama:</strong> 1 Litre berrak suya <strong>2 damla kokusuz çamaşır suyu</strong> ekleyip 30 dakika bekletin.</li>
+            <li><strong>4. SODIS (Güneşle Arıtma):</strong> Şeffaf PET şişedeki suyu 6 saat doğrudan güneş ışığında tutun.</li>
+            <li><strong>5. Yağmur Hasadı:</strong> İlk 10 dakikalık akıntıyı eledikten sonra temiz kapta biriktirin.</li>
           </ul>
         </div>
         <div style="padding:0.5rem 0.75rem;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);border-radius:0.375rem;font-family:var(--font-mono);font-size:0.75rem;color:#fcd34d;">
-          ⚠️ Asla kokulu, çamurlu veya deterjanlı kimyasal suları arıtmadan içmeyin!
+          <strong>Kritik Uyarı:</strong> Kimyasal kirlilik şüphesi olan veya deterjanlı suları arıtmadan içmeyin.
         </div>
       </div>
 
@@ -231,22 +245,22 @@ function _buildEmergencyOverlayHTML() {
       <div class="panic-card panic-card-info">
         <div style="display:flex;flex-direction:column;gap:0.625rem;">
           <div style="display:flex;align-items:center;gap:0.625rem;border-bottom:1px solid rgba(59,130,246,0.3);padding-bottom:0.5rem;">
-            <span style="font-size:1.5rem;">🏃</span>
+            <span class="material-symbols-outlined" style="font-size:1.35rem;color:#60a5fa;">fmd_good</span>
             <h2 style="font-family:var(--font-mono);font-size:1.0625rem;font-weight:800;color:#60a5fa;margin:0;">
-              4. TAHLİYE & İLK 5 DAKİKA REHBERİ
+              4. Tahliye ve İlk Müdahale Protokolü
             </h2>
           </div>
           <ul style="font-family:var(--font-mono);font-size:0.8125rem;color:#dddddd;line-height:1.6;margin:0;padding-left:1.25rem;">
-            <li><strong>Sarsıntı Anı:</strong> Pencerelerden uzak kal. Sağlam nesne yanında <strong>Çök-Kapan-Tutun</strong>.</li>
-            <li><strong>Sarsıntı Bitişi:</strong> Elektrik, gaz ve su ana vanalarını derhal kapatın (Yangını %80 engeller).</li>
-            <li><strong>Tahliye:</strong> Asansör KESİNLİKLE KULLANMA. Merdivenlerde başını koruyarak in.</li>
-            <li><strong>Afet Toplanma Alanı:</strong> E-Devlet'ten belirlediğiniz açık toplanma alanına geçin.</li>
-            <li><strong>İletişim:</strong> Şebekeyi meşgul etmeyin; yakınlarınıza SMS/Internet ile konum atın.</li>
-            <li><strong>Yangın/Duman:</strong> Yangında yere yakın emekleyin, ıslak bezle ağzınızı kapatın.</li>
+            <li><strong>Sarsıntı Anı:</strong> Pencerelerden uzak durun. Sağlam nesne yanında <strong>Çök-Kapan-Tutun</strong> yapın.</li>
+            <li><strong>Tesisat Güvenliği:</strong> Sarsıntı durduğunda doğalgaz, elektrik ve su ana vanalarını derhal kapatın.</li>
+            <li><strong>Tahliye:</strong> Asansör kesinlikle kullanmayın. Merdivenlerde başınızı koruyarak bina dışına çıkın.</li>
+            <li><strong>Toplanma Alanı:</strong> Önceden belirlenmiş açık afet toplanma alanına intikal edin.</li>
+            <li><strong>Haberleşme:</strong> Telefon hatlarını meşgul etmeyin; durumunuzu SMS veya veri kanalıyla bildirin.</li>
+            <li><strong>Duman Riski:</strong> Dumanlı alanda yere yakın ilerleyin, ağzınızı ıslak bezle kapatın.</li>
           </ul>
         </div>
         <div style="padding:0.5rem 0.75rem;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);border-radius:0.375rem;font-family:var(--font-mono);font-size:0.75rem;color:#93c5fd;">
-          💡 Ana vanaların üzerini renkli fosforlu bantla etiketleyin!
+          <strong>Önemli Not:</strong> Ana tesisat vanalarının yerlerini önceden fosforlu bantla işaretleyin.
         </div>
       </div>
 
@@ -352,11 +366,11 @@ function _toggleSosFlasher() {
     _clearSosTimeouts();
     box.className = 'sos-flasher';
     box.textContent = '• • •   - - -   • • • (SOS)';
-    btn.textContent = '⚡ MORS SOS ÇAKARINI BAŞLAT';
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:1.125rem;">flash_on</span><span>Mors SOS Çakarını Başlat</span>';
     return;
   }
 
-  btn.textContent = '⏹️ ÇAKARI DURDUR';
+  btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:1.125rem;">stop_circle</span><span>Çakarı Durdur</span>';
   _startRealMorseSos();
 }
 

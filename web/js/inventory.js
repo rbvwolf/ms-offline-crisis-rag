@@ -141,12 +141,16 @@ function renderInventoryCards() {
     card.className = 'inv-card';
     card.innerHTML = `
       <div class="inv-card-icon">${icon}</div>
-      <div class="inv-card-name" title="${_escHtml(key)}">${_escHtml(key)}</div>
-      <div class="inv-card-qty">${_escHtml(valStr)}</div>
+      <div class="inv-card-info">
+        <div class="inv-card-name" title="${_escHtml(key)}">${_escHtml(key)}</div>
+        <div class="inv-card-qty">${_escHtml(valStr)}</div>
+      </div>
       <!-- Sıralama: [ - (Azalt) ]  [ 🗑 (Sil) ]  [ + (Artır) ] -->
       <div class="inv-card-controls">
         <button class="inv-btn inv-btn-minus" data-item="${_escHtml(key)}" data-unit="${_escHtml(unit)}" title="Azalt">−</button>
-        <button class="inv-btn inv-btn-del"   data-item="${_escHtml(key)}" title="Tümünü Sil">🗑</button>
+        <button class="inv-btn inv-btn-del"   data-item="${_escHtml(key)}" title="Tümünü Sil">
+          <span class="material-symbols-outlined" style="font-size:15px;line-height:1;">delete</span>
+        </button>
         <button class="inv-btn inv-btn-plus"  data-item="${_escHtml(key)}" data-unit="${_escHtml(unit)}" title="Artır">+</button>
       </div>`;
     container.appendChild(card);
@@ -399,38 +403,49 @@ function _injectInventoryStyles() {
     }
     .inv-clear-all-btn:hover { border-color: var(--accent-red); color: var(--accent-red); }
 
-    /* KARE KARTLAR UI (140x140px) */
+    /* RESPONSIVE GRID CARDS (Genişletilmiş ve Ferah Alanlar) */
     #inventoryCards {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 1rem;
-      align-items: flex-start;
-      padding: 0.25rem 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1.25rem;
+      align-items: stretch;
+      padding: 0.5rem 0;
+      width: 100%;
     }
 
     .inv-card {
-      width: 140px;
-      height: 140px;
+      min-height: 195px;
       background: var(--bg-card);
       border: 1px solid var(--border-card);
-      border-radius: var(--rounded-card);
-      padding: 0.625rem;
+      border-radius: var(--rounded-card, 0.75rem);
+      padding: 1.25rem 1rem;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: space-between;
       box-sizing: border-box;
-      transition: border-color 0.15s, box-shadow 0.15s;
+      transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+      box-shadow: var(--shadow-card);
     }
     .inv-card:hover {
+      transform: translateY(-3px);
       border-color: var(--accent-primary);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary) 15%, transparent);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
     }
-    .inv-card-icon { font-size: 1.625rem; line-height: 1; }
+    .inv-card-icon { font-size: 2.75rem; line-height: 1; margin-bottom: 0.25rem; }
+    .inv-card-info {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.35rem;
+      width: 100%;
+      margin: 0.35rem 0 0.75rem;
+    }
     .inv-card-name {
-      font-family: var(--font-mono);
-      font-size: 0.6875rem;
-      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: 0.9375rem;
+      font-weight: 700;
+      color: var(--text-primary);
       text-align: center;
       text-transform: capitalize;
       max-width: 100%;
@@ -439,31 +454,39 @@ function _injectInventoryStyles() {
       white-space: nowrap;
     }
     .inv-card-qty {
-      font-family: var(--font-sans);
-      font-size: 0.875rem;
+      font-family: var(--font-mono);
+      font-size: 1rem;
       font-weight: 700;
-      color: var(--text-primary);
+      color: var(--accent-primary);
+      background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
+      padding: 0.2rem 0.625rem;
+      border-radius: 0.375rem;
+      border: 1px solid color-mix(in srgb, var(--accent-primary) 25%, transparent);
+      display: inline-block;
     }
     /* Controls: [ - (Azalt) ] [ 🗑 (Sil) ] [ + (Artır) ] */
     .inv-card-controls {
       display: flex;
-      gap: 0.25rem;
+      gap: 0.375rem;
       width: 100%;
       justify-content: center;
     }
     .inv-btn {
       flex: 1;
-      height: 1.625rem;
+      height: 2rem;
       border: 1px solid var(--border-card);
       border-radius: 0.375rem;
       background: var(--bg-canvas);
       color: var(--text-secondary);
-      font-size: 0.75rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      font-family: var(--font-mono);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       box-sizing: border-box;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
     }
     .inv-btn-plus:hover  { background: var(--accent-primary); color: #fff; border-color: var(--accent-primary); }
     .inv-btn-minus:hover { background: var(--bg-card); color: var(--text-primary); border-color: var(--accent-primary); }

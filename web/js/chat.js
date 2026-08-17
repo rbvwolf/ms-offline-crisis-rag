@@ -485,7 +485,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const _loadSettingsToUI = () => {
     const temp = localStorage.getItem('app_setting_temp') || '0.1';
-    const topK = localStorage.getItem('app_setting_top_k') || '3';
+    const topK = localStorage.getItem('app_setting_top_k') || '4';
     const maxCtx = localStorage.getItem('app_setting_max_context') || '16000';
 
     if (settingTempInput) settingTempInput.value = temp;
@@ -523,7 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (saveSettingsBtn && settingsModal) {
     saveSettingsBtn.addEventListener('click', () => {
       const temp = settingTempInput ? settingTempInput.value : '0.1';
-      const topK = settingTopKInput ? settingTopKInput.value : '3';
+      const topK = settingTopKInput ? settingTopKInput.value : '4';
       const maxCtx = settingMaxContextInput ? settingMaxContextInput.value : '16000';
 
       localStorage.setItem('app_setting_temp', temp);
