@@ -86,23 +86,31 @@ function _executeResetAll() {
 function _splitIntoPages(content, type) {
   if (!content) return ['[Boş İçerik]'];
 
-  // PDF ise "--- SAYFA X / Y ---" işaretlerinden böl
+  // 1. PDF ise "--- SAYFA X / Y ---" işaretlerinden böl
   if (type === 'pdf' || content.includes('--- SAYFA ')) {
     const rawPages = content.split(/(?=--- SAYFA \d+ \/ \d+ ---)/g);
     const pages = rawPages.map(p => p.trim()).filter(Boolean);
     return pages.length ? pages : [content];
   }
 
-  // TXT metni için bölüm/paragraf bazlı bölme
+  // 2. EPUB veya TXT için akıcı, konforlu kitap sayfalandırması (1,800 - 2,200 karakter)
   const chunks = [];
   const paragraphs = content.split(/\n{2,}/);
   let current = '';
+  const PAGE_LIMIT = (type === 'epub') ? 1800 : CHUNK_SIZE;
+
   for (const p of paragraphs) {
-    if ((current + p).length > CHUNK_SIZE && current) {
+    const trimmedP = p.trim();
+    if (!trimmedP) continue;
+
+    // Eğer yeni bir ana bölüm başlığı varsa (örn. "BÖLÜM X") ve sayfada yeterli metin varsa yeni sayfaya geç
+    const isMajorHeading = /^(bölüm|fasıl|chapter|kısım)\s+\d+/i.test(trimmedP);
+
+    if (current && (current.length + trimmedP.length > PAGE_LIMIT || (isMajorHeading && current.length > 600))) {
       chunks.push(current.trim());
-      current = p + '\n\n';
+      current = trimmedP + '\n\n';
     } else {
-      current += p + '\n\n';
+      current += trimmedP + '\n\n';
     }
   }
   if (current.trim()) chunks.push(current.trim());
@@ -554,17 +562,29 @@ function _renderLibraryList() {
     const prog    = _libProgress[file.name];
     const pct     = prog ? prog.pct : 0;
     const dateStr = prog && prog.lastRead ? ` · Son erişim: ${_formatTurkishDate(prog.lastRead)}` : '';
-    const pageTx  = prog ? `Sayfa ${prog.chunkIndex + 1} / ${prog.total} (%${pct} okundu)${dateStr}` : 'Henüz okunmadı';
-    const icon    = file.category === 'masal' ? '🧸' : (file.type === 'pdf' ? '📄' : '📑');
+    const pageTx  = prog ? `Sayfa/Bölüm ${prog.chunkIndex + 1} / ${prog.total} (%${pct} okundu)${dateStr}` : 'Henüz okunmadı';
+    
+    let iconHtml = '<span class="material-symbols-outlined" style="font-size:1.5rem;color:var(--accent-secondary);">description</span>';
+    let badgeText = file.category;
+    if (file.type === 'epub') {
+      iconHtml = '<span class="material-symbols-outlined" style="font-size:1.5rem;color:var(--accent-tertiary, #a855f7);">auto_stories</span>';
+      badgeText = 'e-kitap';
+    } else if (file.type === 'pdf') {
+      iconHtml = '<span class="material-symbols-outlined" style="font-size:1.5rem;color:var(--accent-red, #ef4444);">picture_as_pdf</span>';
+      badgeText = 'pdf';
+    } else if (file.category === 'masal') {
+      iconHtml = '<span class="material-symbols-outlined" style="font-size:1.5rem;color:var(--accent-primary);">menu_book</span>';
+      badgeText = 'masal';
+    }
 
     const card = document.createElement('div');
     card.className = 'lib-file-card';
     card.innerHTML = `
-      <span class="lib-file-icon">${icon}</span>
+      <span class="lib-file-icon" style="display:flex;align-items:center;justify-content:center;">${iconHtml}</span>
       <div class="lib-file-info">
         <div class="lib-file-title">${_escHtml(file.name)}</div>
         <div class="lib-file-meta">
-          <span class="lib-badge ${file.category}">${file.category}</span>
+          <span class="lib-badge ${file.category}">${badgeText}</span>
           <span>${pageTx}</span>
         </div>
         ${prog ? `<div class="lib-progress-wrap"><div class="lib-progress-fill" style="width:${pct}%"></div></div>` : ''}

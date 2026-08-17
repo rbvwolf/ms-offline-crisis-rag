@@ -9,11 +9,15 @@ Tarayıcıda: http://localhost:8000
 
 import os
 import sys
+import re
 import json
+import zipfile
+import html as html_lib
 import asyncio
 import logging
 from pathlib import Path
 from typing import AsyncGenerator
+from urllib.parse import unquote
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -316,10 +320,95 @@ async def delete_logs():
     log.info("Sistem günlükleri kullanıcı tarafından temizlendi.")
     return JSONResponse({"status": "cleared"})
 
+def _extract_epub_text(epub_path: Path) -> str:
+    """
+    Extracts and cleans all text from an EPUB file, stripping dummy HTML artifacts and formatting errors.
+    """
+    import xml.etree.ElementTree as ET
+
+    try:
+        with zipfile.ZipFile(epub_path, "r") as zf:
+            # 1. Locate OPF file
+            opf_path = ""
+            try:
+                container_data = zf.read("META-INF/container.xml")
+                root = ET.fromstring(container_data)
+                for elem in root.iter():
+                    if elem.tag.endswith("rootfile"):
+                        opf_path = elem.attrib.get("full-path", "")
+                        break
+            except Exception:
+                opf_path = ""
+
+            # 2. Extract manifest items
+            manifest = {}
+            spine = []
+            opf_dir = opf_path.rsplit("/", 1)[0] if "/" in opf_path else ""
+            if opf_path and opf_path in zf.namelist():
+                try:
+                    opf_data = zf.read(opf_path)
+                    opf_root = ET.fromstring(opf_data)
+                    for item in opf_root.iter():
+                        if item.tag.endswith("item"):
+                            i_id = item.attrib.get("id")
+                            href = item.attrib.get("href")
+                            media_type = item.attrib.get("media-type", "")
+                            if "html" in media_type or "xhtml" in media_type or (href and href.endswith((".html", ".xhtml", ".htm"))):
+                                manifest[i_id] = href
+                    for itemref in opf_root.iter():
+                        if itemref.tag.endswith("itemref"):
+                            idref = itemref.attrib.get("idref")
+                            if idref in manifest:
+                                spine.append(manifest[idref])
+                except Exception:
+                    pass
+
+            if not spine:
+                spine = [name for name in zf.namelist() if name.endswith((".html", ".xhtml", ".htm"))]
+
+            text_blocks = []
+            for href in spine:
+                full_href = f"{opf_dir}/{href}" if opf_dir and not href.startswith(opf_dir) else href
+                if full_href not in zf.namelist() and href in zf.namelist():
+                    full_href = href
+                if full_href in zf.namelist():
+                    try:
+                        raw_html = zf.read(full_href).decode("utf-8", errors="replace")
+                        raw_html = raw_html.replace("\ufeff", "")
+                        # Remove script, style, comments
+                        clean = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", raw_html, flags=re.IGNORECASE | re.DOTALL)
+                        clean = re.sub(r"<!--.*?-->", "", clean, flags=re.DOTALL)
+                        clean = re.sub(r"</?(p|div|h[1-6]|li|tr|blockquote)[^>]*>", "\n", clean, flags=re.IGNORECASE)
+                        clean = re.sub(r"<br\s*/?>", "\n", clean, flags=re.IGNORECASE)
+                        clean = re.sub(r"<[^>]+>", " ", clean)
+                        clean = html_lib.unescape(clean)
+
+                        lines = []
+                        for line in clean.splitlines():
+                            l = line.strip()
+                            if not l:
+                                continue
+                            # Remove dummy filename echoes like 6-2.html, Section001.xhtml, 1.html etc.
+                            if re.match(r"^[\w\-]+\.(html|xhtml|htm)$", l, re.IGNORECASE):
+                                continue
+                            lines.append(l)
+
+                        block = "\n\n".join(lines).strip()
+                        if block and len(block) > 5:
+                            text_blocks.append(block)
+                    except Exception:
+                        continue
+
+            full_text = "\n\n".join(text_blocks)
+            return full_text if full_text.strip() else "[EPUB İçeriği Okunamadı veya Boş]"
+    except Exception as e:
+        return f"[EPUB Açma Hatası: {e}]"
+
+
 @app.get("/api/library/list")
 async def get_library_list():
     """
-    Returns a list of available TXT and PDF files for the AI-bypass library reader.
+    Returns a list of available TXT, PDF, and EPUB files for the AI-bypass library reader.
     Categorizes files into 'rehber' (Guidance), 'masal' (Stories/Books), and 'pdf' (PDF Docs).
     """
     files = []
@@ -332,12 +421,13 @@ async def get_library_list():
     for d in (stories_dir, books_dir):
         d.mkdir(parents=True, exist_ok=True)
 
-    # 1. Stories / Books (Masallar Tab)
+    # 1. Stories / Books (Masallar & E-Kitaplar Tab)
     for d in (stories_dir, books_dir):
         if d.exists():
-            for p in sorted(list(d.glob("*.txt")) + list(d.glob("*.pdf"))):
+            for p in sorted(list(d.glob("*.txt")) + list(d.glob("*.pdf")) + list(d.glob("*.epub"))):
                 if not any(f["name"] == p.name for f in files):
-                    ftype = "pdf" if p.suffix.lower() == ".pdf" else "txt"
+                    ext = p.suffix.lower()
+                    ftype = "pdf" if ext == ".pdf" else ("epub" if ext == ".epub" else "txt")
                     files.append({
                         "name": p.name,
                         "type": ftype,
@@ -347,11 +437,13 @@ async def get_library_list():
 
     # 2. Afet Rehberleri (TXT Tab)
     if raw_txts_dir.exists():
-        for p in sorted(raw_txts_dir.glob("*.txt")):
+        for p in sorted(list(raw_txts_dir.glob("*.txt")) + list(raw_txts_dir.glob("*.epub"))):
             if not any(f["name"] == p.name for f in files):
+                ext = p.suffix.lower()
+                ftype = "epub" if ext == ".epub" else "txt"
                 files.append({
                     "name": p.name,
-                    "type": "txt",
+                    "type": ftype,
                     "category": "rehber",
                     "size": p.stat().st_size,
                 })
@@ -370,36 +462,13 @@ async def get_library_list():
 
     return JSONResponse({"files": files, "count": len(files)})
 
-@app.get("/api/child-stories")
-async def get_child_stories():
-    """
-    Reads calming children stories from data/kisa_hikayeler directory and returns them to web frontend.
-    """
-    stories_dir = PROJECT_DIR / "data" / "kisa_hikayeler"
-    stories = []
-    if stories_dir.exists():
-        for p in sorted(stories_dir.glob("*.txt")):
-            try:
-                content = p.read_text(encoding="utf-8").strip()
-                lines = [line.strip() for line in content.splitlines() if line.strip()]
-                title = lines[0] if lines else p.stem.replace("_", " ").title()
-                body = "\n\n".join(lines[1:]) if len(lines) > 1 else content
-                stories.append({
-                    "id": p.stem,
-                    "title": title,
-                    "content": body,
-                    "filename": p.name
-                })
-            except Exception as e:
-                log.warning(f"Hikaye okuma hatası {p.name}: {e}")
-
-    return JSONResponse({"stories": stories, "count": len(stories)})
 
 @app.get("/api/file/{filename}")
 async def get_raw_file(filename: str):
     """
-    Returns full content of a raw TXT file or extracts ALL pages from a PDF file for viewing in browser.
+    Returns full content of a raw TXT file, extracts ALL pages from a PDF file, or extracts chapters from an EPUB file.
     """
+    filename = unquote(filename).strip()
     log.info(f"📖 [KÜTÜPHANE OKUYUCU] Belge görüntülendi: '{filename}'")
     raw_txts_dir = PROJECT_DIR / "data" / "raw_txts"
     raw_pdfs_dir = PROJECT_DIR / "data" / "raw_pdfs"
@@ -424,7 +493,23 @@ async def get_raw_file(filename: str):
         content = txt_path.read_text(encoding="utf-8", errors="replace")
         return JSONResponse({"filename": txt_path.name, "type": "txt", "content": content})
 
-    # 2. PDF Search (check raw_pdfs, pdfs, stories, books)
+    # 2. EPUB Search
+    epub_path = books_dir / filename
+    if not epub_path.exists():
+        for d in (books_dir, stories_dir, raw_txts_dir):
+            if d.exists():
+                for p in d.glob("*.epub"):
+                    if p.name.lower() == filename.lower():
+                        epub_path = p
+                        break
+                if epub_path.exists():
+                    break
+
+    if epub_path.exists() and epub_path.is_file():
+        full_text = _extract_epub_text(epub_path)
+        return JSONResponse({"filename": epub_path.name, "type": "epub", "content": full_text})
+
+    # 3. PDF Search (check raw_pdfs, pdfs, stories, books)
     pdf_path = raw_pdfs_dir / filename
     if not pdf_path.exists():
         for d in (raw_pdfs_dir, pdfs_dir, stories_dir, books_dir):
