@@ -1,10 +1,4 @@
-# Node.js
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Python & Virtual Envs
+# Python & Virtual Environments
 venv/
 .venv/
 env/
@@ -15,15 +9,18 @@ __pycache__/
 *.pyd
 .pytest_cache/
 
-# Databases & Processed Data
-*.db
-*.sqlite
-db/*.db
-db/*.sqlite
-data/processed/
-docs/
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Temp & Scratch
+# Temporary SQLite lock/journal files (Database survival_knowledge.db is tracked)
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Temp, Logs & Scratch Artifacts
 scratch/
 .tempmediaStorage/
 .user_uploaded/

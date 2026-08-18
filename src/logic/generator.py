@@ -42,8 +42,11 @@ from state_manager import StateManager, clean_llm_response, parse_explicit_inven
 
 # ---------------------------------------------------------------------------
 # Module-level caches (persist for the whole process lifetime)
-# ---------------------------------------------------------------------------
+# C-2 FIX: Cap embed cache at 200 entries to prevent unbounded memory growth
+# in long sessions. LRU eviction: remove oldest entry when limit is reached.
+_EMBED_CACHE_MAX = 200
 _embed_cache: dict = {}   # query_string -> np.ndarray
+_embed_cache_order: list = []  # insertion-order key tracking for LRU eviction
 
 # ---------------------------------------------------------------------------
 # Pre-embedded canonical queries for fast query normalisation at runtime.
@@ -94,13 +97,20 @@ def _resolve_query(query: str, embeddings_model, query_cache: dict) -> list:
     Embeds query (with session-level cache) then optionally snaps it to the
     nearest canonical pre-embedded query if within CACHE_HIT_THRESHOLD.
     Returns a plain Python list ready for sqlite_vec serialisation.
+    C-2 FIX: embed cache capped at _EMBED_CACHE_MAX entries (LRU eviction).
     """
+    global _embed_cache, _embed_cache_order
     if query in _embed_cache:
         print("(*) Embedding cache hit")
         user_vec = _embed_cache[query]
     else:
         user_vec = np.array(embeddings_model.embed_query(query), dtype=np.float32)
+        # LRU eviction: drop oldest when over limit
+        if len(_embed_cache) >= _EMBED_CACHE_MAX:
+            oldest = _embed_cache_order.pop(0)
+            _embed_cache.pop(oldest, None)
         _embed_cache[query] = user_vec
+        _embed_cache_order.append(query)
 
     if not query_cache:
         return user_vec.tolist()
@@ -461,6 +471,8 @@ def _safe_close_stream(stream):
 def _has_repetition_loop(raw_tokens: list) -> bool:
     """
     Detects if the LLM has entered a repetition loop or is repeating bullet points / headers.
+    H-2 FIX: Require 3+ identical lines (not 2) to avoid false-positive
+    truncation when a safety instruction legitimately appears twice (e.g. 'Dur.').
     """
     if len(raw_tokens) < 10:
         return False
@@ -468,8 +480,10 @@ def _has_repetition_loop(raw_tokens: list) -> bool:
     full_text = "".join(raw_tokens).lower()
     lines = [l.strip("-* 0123456789.:\t").strip() for l in full_text.split('\n') if len(l.strip()) >= 15]
 
-    # If the exact same line/step appears 2+ times in the generated response
-    if len(lines) != len(set(lines)):
+    # Require the same line to appear 3+ times to avoid false positives
+    from collections import Counter
+    line_counts = Counter(lines)
+    if any(count >= 3 for count in line_counts.values()):
         return True
 
     recent_text = " ".join(raw_tokens[-40:]).lower()

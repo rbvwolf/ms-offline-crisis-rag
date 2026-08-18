@@ -166,6 +166,29 @@ function sendMessage(text) {
   );
 
   let fullResponse = '';
+  let firstTokenReceived = false;
+  let s6Interval = null;  // S6: polls /api/logs to detect RAG completion
+
+  // S6: Start polling system logs; when RAG ARAMA entry appears, update bubble
+  s6Interval = setInterval(async () => {
+    if (firstTokenReceived) { clearInterval(s6Interval); return; }
+    try {
+      const r = await fetch('/api/logs');
+      const d = await r.json();
+      if (!d.logs || !d.logs.length) return;
+      // Search recent logs (last 30) for the RAG ARAMA entry
+      const ragLog = d.logs.slice(-30).reverse().find(l =>
+        l.message && l.message.includes('RAG ARAMA')
+      );
+      if (ragLog && !firstTokenReceived) {
+        const m = ragLog.message.match(/(\d+) ilgili par/);
+        const count = m ? m[1] : '?';
+        assistantBubble.innerHTML = `<p class="animate-breathe" style="color:var(--text-muted);font-size:0.82rem;"><strong style="color:var(--text-accent);">${count} kaynak bulundu,</strong> yanıt hazırlanıyor...</p>`;
+        scrollToBottom();
+        clearInterval(s6Interval);
+      }
+    } catch(e) {}
+  }, 250);
 
   // FastAPI SSE endpoint (/api/chat)
   fetch('/api/chat', {
@@ -176,12 +199,13 @@ function sendMessage(text) {
   .then(res => {
     if (!res.ok) {
       return res.json().then(data => {
-        throw new Error(data.error || 'Sunucu hatas\u0131');
+        throw new Error(data.error || 'Sunucu hatası');
       });
     }
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder('utf-8');
+    let sseBuffer = '';  // H-1 FIX: accumulate partial SSE data across TCP chunks
 
     function readChunk() {
       reader.read().then(({ done, value }) => {
@@ -195,46 +219,66 @@ function sendMessage(text) {
           }
           // Refresh RAG debug panel
           if (typeof updateRagPanel === 'function') updateRagPanel();
+          clearInterval(s6Interval);  // ensure polling stops on stream end
           return;
         }
 
-        const chunkText = decoder.decode(value, { stream: true });
-        const lines = chunkText.split('\n');
+        // H-1 FIX: Append decoded chunk to buffer and process only complete SSE events
+        sseBuffer += decoder.decode(value, { stream: true });
+        const events = sseBuffer.split('\n\n');
+        // Last element may be incomplete — keep it in the buffer
+        sseBuffer = events.pop() || '';
 
-        lines.forEach(line => {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6).trim();
-            if (dataStr === '[DONE]') return;
-            try {
-              const parsed = JSON.parse(dataStr);
-              if (parsed.rag_docs) {
-                renderRagPanel(parsed.rag_docs);
-              } else if (parsed.telemetry) {
-                renderTelemetry(parsed.telemetry);
-              } else if (parsed.token) {
-                fullResponse += parsed.token;
-                const cleanText = cleanStreamOutput(fullResponse);
-                assistantBubble.innerHTML = `<p>${escapeHtml(cleanText).replace(/\n/g, '<br>')}</p>`;
-                scrollToBottom();
+        events.forEach(event => {
+          const lines = event.split('\n');
+          lines.forEach(line => {
+            if (line.startsWith('data: ')) {
+              const dataStr = line.slice(6).trim();
+              if (dataStr === '[DONE]') return;
+              try {
+                const parsed = JSON.parse(dataStr);
+
+                if (parsed.rag_docs) {
+                  // Update right panel
+                  try { renderRagPanel(parsed.rag_docs); } catch (e) {}
+
+                  // Update assistant bubble with source count
+                  const srcCount = (parsed.rag_docs || []).length;
+                  if (srcCount > 0 && !firstTokenReceived) {
+                    assistantBubble.innerHTML = `<p class="animate-breathe" style="color:var(--text-muted);font-size:0.82rem;"><strong style="color:var(--text-accent);">${srcCount} kaynak bulundu,</strong> yanıt hazırlanıyor...</p>`;
+                    scrollToBottom();
+                  }
+
+                } else if (parsed.telemetry) {
+                  try { renderTelemetry(parsed.telemetry); } catch (e) {}
+
+                } else if (parsed.token) {
+                  if (!firstTokenReceived) {
+                    firstTokenReceived = true;
+                    if (s6Interval) clearInterval(s6Interval);  // stop log polling
+                    assistantBubble.innerHTML = ''; // clear waiting placeholder on first token
+                  }
+                  fullResponse += parsed.token;
+                  const cleanText = cleanStreamOutput(fullResponse);
+                  assistantBubble.innerHTML = `<p>${escapeHtml(cleanText).replace(/\n/g, '<br>')}</p>`;
+                  scrollToBottom();
+                }
+
+              } catch (e) {
+                // Partial JSON or non-JSON data — skip silently (buffer handles framing)
               }
-            } catch (e) {
-              // Direct text token
-              fullResponse += dataStr;
-              const cleanText = cleanStreamOutput(fullResponse);
-              assistantBubble.innerHTML = `<p>${escapeHtml(cleanText).replace(/\n/g, '<br>')}</p>`;
-              scrollToBottom();
             }
-          }
+          });
         });
 
         readChunk();
       }).catch(err => {
+        if (s6Interval) clearInterval(s6Interval);
         assistantBubble.innerHTML = `<p style="color:var(--text-danger);">Hata: ${escapeHtml(err.message)}</p>`;
         scrollToBottom();
       });
     }
 
-    assistantBubble.innerHTML = '';
     readChunk();
   })
   .catch(err => {

@@ -19,18 +19,63 @@ let _currentStoryIndex = 0;
 let _CHILD_STORIES = [
   {
     id: "01_ormandaki_ruzgarli_gun",
-    title: "🌲 Ormandaki Rüzgarlı Gün Masalı",
-    content: `Merhaba küçük dostum. Şu an dışarıda biraz gürültü olabilir, tıpkı ormandaki rüzgarlı bir gün gibi. Ormanda rüzgar çok sert estiğinde, akıllı küçük ayılar hemen annelerinin yanına kıvrılır ve sıcak mağaralarında beklerler. Dışarıdaki rüzgar ağaçları ne kadar sallarsa sallasın, mağaranın içi hep güvenli ve sakindir. Biz de şimdi seninle o küçük ayılar gibiyiz. Gözlerimizi kapatıp derin bir nefes alacağız. Karnımızı kocaman bir balon gibi şişireceğiz... ve yavaşça söndüreceğiz. Aferin sana. Rüzgar birazdan dinecek, o zamana kadar ben senin yanındayım, sana sarılıyorum ve hiçbir yere gitmiyorum.`
+    title: "🌲 Ormandaki Rüzgarlı Gün ve Sıcak Mağara",
+    content: "Merhaba benim güzel küçük dostum. Şu an dışarıda rüzgar sert esiyor ya da biraz gürültü olabilir, tıpkı kocaman çam ağaçlarıyla dolu yeşil ormandaki rüzgarlı bir gün gibi. Ormanda rüzgar ağaçların dallarını sallamaya başladığında, akıllı küçük ayılar hiç paniklemezler. Annelerinin sıcacık elini tutar ve ormanın en güvenli yerinde bulunan mağaralarına doğru sakince yürürler.\n\nMağaranın içi yumuşacık yapraklarla doludur, dışarıdaki rüzgar ne kadar uğuldarsa uğuldasın, mağaranın kalın taş duvarları içeriye tek bir soğuk hava bile geçirmez. Küçük ayı annesine kıvrılır, başını göğsüne koyar ve dışarıdaki rüzgarın sesini tıpkı ninnilere benzeterek dinlemeye başlar.\n\nŞimdi sen de tıpkı o akıllı küçük ayı gibisin. Güvenli evinde, sevdiklerinin yanındasın. Gözlerini sakince kapatabilirsin. Gel seninle bir oyun oynayalım: Karnını kocaman bir mavi balon gibi düşün. Nefes alırken o balonu şişir... '1... 2... 3... 4...' Şimdi nefesini sakince tut... ve puf diye havayı dışarı üfle. Dışarıdaki rüzgar birazdan dinecek, güneş yeniden açacak. Ben senin yanındayım, seni çok seviyorum ve güvendesin."
   },
   {
     id: "02_akilli_kucuk_tavsan",
-    title: "🐰 Akıllı Küçük Tavşanın Yuvası",
-    content: `Bir zamanlar yemyeşil bir ormanda küçük bir tavşan yaşarmış. Bir gün yer hafifçe sallandığında, tavşan paniklemek yerine hemen sağlam kökleri olan koca meşe ağacının yanına çökmüş, kulaklarını kapatıp sarsıntı geçene kadar beklemiş. Sarsıntı bittiğinde annesi gelip ona sarılmış ve 'Aferin sana küçük tavşan, ne kadar akıllıca davrandın!' demiş. Sen de tıpkı o akıllı tavşan gibi sağlam masanın altında güvendesin.`
+    title: "🐰 Akıllı Küçük Tavşanın Koca Meşe Yuvası",
+    content: "Yemyeşil çayırlarda koşan neşeli küçük bir tavşan varmış. Adı Pamuk'muş. Pamuk bir gün kırlarda havuç toplarken yerin hafifçe kımıldadığını hissetmiş. Rüzgar yaprakları sallamış ve kuşlar ötmüş. Pamuk hiç korkup koşmamış, çünkü öğretmeni ona acil durumlarda ne yapması gerektiğini öğretmiş.\n\nPamuk hemen çayırın en güçlü ve kökleri derinlerde olan koca meşe ağacının yanına koşmuş. Ağacın sağlam gövdesinin hemen yanında dizlerini büküp yere çökmüş, uzun kulaklarını başının üzerine kapatıp kendini korumuş. Sarsıntı geçene kadar içinden saymış: '1, 2, 3, 4, 5...'\n\nSarsıntı bittiğinde anne tavşan koşarak gelmiş, Pamuk'a sarılmış ve 'Aferin sana akıllı yavrum! Çöküp başını koruduğun için harika davrandın!' diyerek ona en tatlı havucunu vermiş. Sen de tıpkı Pamuk gibi akıllısın. Bir şey olduğunda sağlam bir masanın altına çöküp beklemek seni hep korur. Yalnız değilsin, biz yanındayız."
   },
   {
     id: "03_cesur_kucuk_yildiz",
-    title: "⭐ Cesur Küçük Yıldız",
-    content: `Gece gökyüzünde parıldayan küçük bir yıldız varmış. Bazen bulutlar önünü kapattığında veya elektrikler kesildiğinde karanlıktan korkarmış. Ama sonra hatırlamış ki kendi içinde harika bir ışık var! El fenerini yaktığında karanlık hemen kaçışırmış. Elektrikler kesilse bile bu sadece bir mola. Fenerimizi yakarız, birbirimizin elini tutarız ve ışığımız hiç sönmez.`
+    title: "⭐ Cesur Küçük Yıldızın İçindeki Parlak Işık",
+    content: "Karanlık ve berrak gece gökyüzünde parlaya küçük bir yıldız varmış. Adı Pırıltı'ymış. Pırıltı bazen kocaman kara bulutlar önünü kapattığında veya gökyüzünde şimşekler çaktığında biraz korkar, ışığını söndürürmüş.\n\nBir gece bilge yaşlı gezegen Pırıltı'ya yaklaşmış ve demiş ki: 'Küçük yıldız, karanlık ne kadar yoğun olursa olsun, senin içindeki ışık hiç sönmez. Elektrikler kesilse veya etraf kararsa bile, bu sadece dinlenmek için bir moladır. El fenerini yaktığında karanlık hemen kaçışır!'\n\nPırıltı bunu duyunca derin bir nefes almış, minik ışığını yeniden yakmış ve bulutların arkasından gülüsemeye başlamış. Şimdi evimizde ışıklar kesilse bile hiç korkmuyoruz. Fenerimizi açıyoruz, el ele tutuşuyoruz ve kendi ışığımızla etrafı aydınlatıyoruz. Iığımız hiç sönmeyecek!"
+  },
+  {
+    id: "04_sevimli_sincabin_cantasi",
+    title: "🐿️ Sevimli Sincap Fındık ve Sihirli Torbası",
+    content: "Büyük ceviz ağacının kovuğunda yaşayan sevimli sincap Fındık, düzenli olmayı çok severmiş. Her mevsim başında küçük sırt çantasını hazırlar, içine en değerli eşyalarını yerleştirirmiş: Küçük bir fener, sesi uzaktan duyulan kırmızı bir düdük, matarasında taze su ve en sevdiği lezzetli bisküviler!\n\nBir gün ormanda rüzgarlı ve yağmurlu bir fırtına başlamış. Ağaçların dalları sallanırken Fındık hemen hazırladığı çantasını sırtına takmış, güvenli kovuğuna çekilmiş. Fenerini yakıp bisküvisinden bir ısırık almış.\n\nArkadaşı tavşan Fındık'a sormuş: 'Fındık, dışarıda fırtına var ama sen nasıl bu kadar sakinsin?' Fındık gülümseyerek cevap vermiş: 'Çünkü hazırlıklı olan bir sincap hiç korkmaz! Çantam hazır olduğu için güvende olduğumu biliyorum.' Biz de seninle çantamızı hazırladık, içimiz çok rahat!"
+  },
+  {
+    id: "05_sakin_kaplumbaga_tobi",
+    title: "🐢 Sakin Kaplumbağa Tobi ve Güvenli Kabuğu",
+    content: "Ormanın huzurlu patikasında yavaş yavaş yürüyen kaplumbağa Tobi, etrafı seyretmeyi çok severmiş. Bir öğleden sonra, tepedeki kayalardan küçük taşlar yuvarlanmış ve yüksek bir ses çıkarmış. Ormandaki bazı hayvanlar sağa sola koşuşmaya başlamış.\n\nAma Tobi durmuş. Hiç heyecanlanmadan başını, kollarını ve ayaklarını sıcacık, sert kabuğunun içine çekmiş. Kabuğunun içi tıkır tıkır seslerden korunan tam güvenli bir ev gibiymiş. Tobi kabuğunun içinde gözlerini kapatıp 3 kere derin nefes almış: 'Nefes al... nefes ver...'\n\nBirkaç dakika sonra sesler kesilmiş. Tobi başını yavaşça dışarı çıkarmış, neşeyle gülümsemiş. 'İşte bu kadar kolay!' demiş. Sarsıntılarda veya yüksek seslerde biz de sağlam bir masanın altına girip Tobi gibi kabuğumuza çekiliriz. Tehlike geçince huzurla yolumuza devam ederiz."
+  },
+  {
+    id: "06_cesur_deniz_feneri",
+    title: "🌊 Kıyıdaki Cesur Deniz Feneri ve Mavi Koyu",
+    content: "Masmavi denizlerin birleştiği yüksek bir falez üzerinde heybetli bir deniz feneri dururmuş. Adı Rüzgar Feneri'ymiş. Denizde bazen dev dalgalar çıkar, rüzgar köpükler saçarak esermiş. Gemiler koya yanaşırken fenerin ışığına bakarak yollarını bulurlarmış.\n\nRüzgar Feneri dipdiri dururmuş; çünkü kökleri altındaki sağlam kayalara sımsıkı bağlıymış. Dalgalar kayalara çarptıkça fener gülüser, 'Ben buradayım, ışığımla hedefinizi aydınlatıyorum!' dermiş.\n\nFırtına dindiğinde deniz çarşaf gibi düzleşir, martılar neşeyle uçuşmaya başlarmış. Sen de evinde ailenle birlikte o deniz feneri kadar sağlam ve güvendesin. Dışarıda ne olursa olsun, fenerimizin ışığı yanıyor ve birbirimizin elini sımsıkı tutuyoruz."
+  },
+  {
+    id: "07_bilge_baykusun_gece_rehberi",
+    title: "🦉 Bilge Baykuş Barnaby'nin Gece Masalı",
+    content: "Ormanın en yüksek çam ağacının tepesinde bilge baykuş Barnaby yaşarmış. Barnaby büyük yuvarlak gözleriyle geceyi izler, ormandaki tüm hayvan dostlarına rehberlik edermiş. Geceleyin fırtına çıkıp ağaçlar sallandığında, küçük kuşlar korkuyla Barnaby'nin yanına uçarlarmış.\n\nBarnaby kanatlarını açar, hepsini sarar ve yumuşacık sesiyle konuşurmuş: 'Korkmayın küçük dostlarım. Doğa bazen esner, rüzgar eser ve yer kımıldar. Ama unutmayın, birbirimize sarıldığımızda ve sakin kaldığımız sürece hiçbir güç bizi üzemez.'\n\nBarnaby minik kuşlara derin derin nefes aldırır, 4 saniye nefesi tutup sakince verdirtirmiş. Kuşların kalpleri hemen yavaşlar, huzurla uykuya dalarlarmış. Sen de şimdi Barnaby'nin sıcak kanatları altındasın. Sakince gözlerini kapat ve derin bir nefes al. Güvendesin."
+  },
+  {
+    id: "08_minik_karincanin_tas_evi",
+    title: "🐜 Minik Karınca Karamel'in Sağlam Evi",
+    content: "Çakıl taşlarının arasında yaşayan çalışkan minik karınca Karamel, mühendis gibi mimariyi çok severmiş. Evi küçük çakıl taşlarından, sağlam çam kovanlarından ve güçlü köklerden oluşurmuş.\n\nBir gün koca bir ayağın yakınından geçmesiyle Karamel'in yuvası hafifçe sarsılmış. Karamel hiç paniklemeden evinin en korunaklı bölmesine geçmiş, bacaklarını toplayıp beklemiş. Yuvası o kadar sağlam yapılmış ki, taşlar yerinden bile kımıldamamış.\n\nKaramel der ki: 'Önemli olan ne kadar büyük olduğun değil, ne kadar hazırlıklı ve sakin olduğundur!' Biz de evlerimizde sağlam masaların altında Karamel gibi korunaklıyız. Korkulacak hiçbir şey yok!"
+  },
+  {
+    id: "09_mavi_balinanin_derin_sukuneti",
+    title: "🐳 Mavi Balina Maviş'in Huzurlu Yolculuğu",
+    content: "Masmavi derin okyanuslarda yavaşça yüzen dev mavi balina Maviş, suyun altındaki en sakin canlıymış. Okyanusun yüzeyinde büyük fırtınalar çıkıp dalgalar kabardığında, Maviş yavaşça suyun biraz daha derinlerine, huzurlu ve masmavi sessizliğe doğru süzülürmüş.\n\nDerinlerde su hep sıcacık ve sakindir. Maviş kocaman gövdesiyle yavaşça yüzer, kuyruğunu sallar ve suyun altından şarkılar söylermiş. 'Fırtınalar gelir geçer, ama suyun altındaki huzur hep kalır.'\n\nMaviş bize derin nefes almanın sırrını öğretir: Nefes alırken okyanusun tüm huzurunu içine çek, nefes verirken tüm yorgunluğu dışarı bırak. Şimdi sen de Maviş gibi derin ve huzurlu bir nefes al. Güvendesin."
+  },
+  {
+    id: "10_seker_bulutunun_yumusak_uykusu",
+    title: "☁️ Şeker Bulutunun Yumuşak Uyku Masalı",
+    content: "Gökyüzünün en yüksek yerinde pamuk gibi yumuşacık bir şeker bulutu yaşarmış. Adı Pufi'ymiş. Pufi gündüzleri çocukların üzerinden geçer, onlara dondurma ve pamuk şeker şeklini alarak neşe saçarmış.\n\nGece olduğunda Pufi gökyüzündeki ayın yanına yanaşır, üzerine serilen yıldızdan battaniyesini çeker ve mışıl mışıl uyumaya hazırlanırmış. Rüzgar eserken Pufi hafifçe sallanır, tıpkı beşikte sallanan bir bebek gibi huzur bulurmuş.\n\nPufi der ki: 'Gece olduğunda dünyadaki tüm canlılar dinlenir. Yataklarımız bizim en yumuşak ve güvenli bulutlarımızdır.' Şimdi sen de Pufi'nin pamuk bulutuna uzandığını hayal et. Gözlerini kapat, sıcacık yorganına sarıl ve tatlı uykulara dal."
+  },
+  {
+    id: "11_kucuk_rengeyiginin_cesur_adimlari",
+    title: "🦌 Küçük Rengeyiği Riko'nun Cesur Adımları",
+    content: "Karlar ülkesinde yaşayan küçük rengeyiği Riko, tüy gibi hafif ve cesur adımlara sahipmiş. Bir kış günü karlı dağlarda yürürken, yükseklerden kar kütleleri yuvarlanıp 'güm güm' ses çıkarmış.\n\nRiko durmuş. Büyük geyiklerin öğrettiği gibi hemen güvenli kayanın arkasına geçip dizlerini bükmüş. Ses geçene kadar neşeyle içinden 10'a kadar saymış. Riko biliyormuş ki karlı dağlarda sakin kalan rengeyikleri her zaman güvendedir.\n\nSes kesilince Riko neşeyle zıplamış, arkadaşlarına doğru koşmuş. Riko der ki: 'Cesaret, hiç korkmamak değil; korktuğunda ne yapacağını bilmektir!' Sen de çok cesur bir çocuksu. Ne yapacağını biliyorsun ve güvendesin!"
+  },
+  {
+    id: "12_sihirli_fenerin_isigi",
+    title: "🔦 Sihirli El Feneri ve Sıcak Yuva",
+    content: "Bir akşam evde ailece otururken birden elektrikler kesilmiş ve her yer karanlık olmuş. Küçük Can başlarda biraz şaşırmış. Ama babası hemen cebinden küçük, sarı bir el feneri çıkarmış ve yakmış.\n\nO anda odanın tavanı sihirli bir tiyatro sahnesine dönüşmüş! Can ve babası elleriyle duvarda kuş, tavşan ve kelebek gölgeleri yapmışlar. Karanlık bir korku yeri değil, eğlenceli bir oyun alanına dönüşmüş.\n\nCan anlamış ki elektrik kesintileri sadece şehirdeki kabloların dinlenmesidir. Fenerimizi yaktığımızda, sevdiklerimizin elini tuttuğumuzda karanlık bize sadece neşe verir. Şimdi sen de fenerini yak ve gülümse. Her şey çok güzel!"
   }
 ];
 

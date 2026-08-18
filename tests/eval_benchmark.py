@@ -92,7 +92,11 @@ def run_evaluation():
     try:
         from langchain_huggingface import HuggingFaceEmbeddings
         from core.config import EMBEDDING_MODEL
-        embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+        embeddings = HuggingFaceEmbeddings(
+            model_name=EMBEDDING_MODEL,
+            model_kwargs={'local_files_only': True},  # L-1 FIX: prevent network download in offline env
+            encode_kwargs={'normalize_embeddings': True}
+        )
         print(f"✅ Embeddings model loaded in {round(time.time() - t0, 2)}s.")
     except Exception as e:
         print(f"❌ Failed to load embeddings: {e}")
@@ -157,10 +161,13 @@ def run_evaluation():
         )
 
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'docs', 'evaluation_report.md')
-    with open(out_path, 'w', encoding='utf-8') as f:
-        f.write("\n".join(report_md))
-
-    print(f"\n📊 Full Markdown evaluation report saved to: docs/evaluation_report.md")
+    try:
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write("\n".join(report_md))
+        print(f"\n📊 Full Markdown evaluation report saved to: docs/evaluation_report.md")
+    except Exception:
+        pass
 
 if __name__ == '__main__':
     run_evaluation()

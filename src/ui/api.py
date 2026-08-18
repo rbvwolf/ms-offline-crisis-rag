@@ -120,18 +120,25 @@ _model_ready_event = asyncio.Event()
 def _initialize_system(loop: asyncio.AbstractEventLoop):
     """Blocking LLM + Embedding + DB load (runs in thread pool)"""
     log.info("Model, Embedding ve DB yukleniyor...")
-    model, embeddings, db, query_cache, state_manager = setup_system()
-    app_state["model"]         = model
-    app_state["embeddings"]    = embeddings
-    app_state["db"]            = db
-    app_state["query_cache"]   = query_cache
-    app_state["state_manager"] = state_manager
-    app_state["ready"]         = True
-    app_state["loading"]       = False
-    log.info("=" * 55)
-    log.info("  [+] SİSTEM BAŞARILI ŞEKİLDE YÜKLENDİ - LLM HAZIR!")
-    log.info("=" * 55)
-    loop.call_soon_threadsafe(_model_ready_event.set)
+    try:
+        model, embeddings, db, query_cache, state_manager = setup_system()
+        app_state["model"]         = model
+        app_state["embeddings"]    = embeddings
+        app_state["db"]            = db
+        app_state["query_cache"]   = query_cache
+        app_state["state_manager"] = state_manager
+        app_state["ready"]         = True
+        app_state["loading"]       = False
+        log.info("=" * 55)
+        log.info("  [+] SİSTEM BAŞARILI ŞEKİLDE YÜKLENDİ - LLM HAZIR!")
+        log.info("=" * 55)
+    except Exception as exc:
+        log.error(f"  [-] SİSTEM YÜKLEME HATASI: {exc}")
+        app_state["loading"] = False
+        app_state["error"]   = str(exc)
+    finally:
+        # Always fire the event so SSE status stream unblocks (sends 'ready' or 'error')
+        loop.call_soon_threadsafe(_model_ready_event.set)
 
 @app.on_event("startup")
 async def startup():
@@ -167,6 +174,7 @@ async def serve_index():
     return HTMLResponse(content=index_path.read_text(encoding="utf-8"), media_type="text/html; charset=utf-8")
 
 @app.get("/api/status")
+@app.get("/api/health")
 async def get_status():
     from core.config import DB_PATH
     db_exists = Path(DB_PATH).exists()
@@ -194,7 +202,10 @@ async def get_status_stream():
             return
         try:
             await asyncio.wait_for(_model_ready_event.wait(), timeout=600.0)
-            yield f"retry: 86400000\ndata: {json.dumps({'model': 'ready'})}\n\n"
+            if app_state.get("error"):
+                yield f"retry: 86400000\ndata: {json.dumps({'model': 'error', 'detail': app_state['error']})}\n\n"
+            else:
+                yield f"retry: 86400000\ndata: {json.dumps({'model': 'ready'})}\n\n"
         except asyncio.TimeoutError:
             yield f"retry: 86400000\ndata: {json.dumps({'model': 'timeout'})}\n\n"
 
@@ -213,29 +224,49 @@ async def post_chat(request: Request):
             "status": "model_loading"
         }, status_code=503)
 
-    def event_generator():
+    # C-1 FIX: Run the synchronous LLM generator in a thread pool so the
+    # async event loop is never blocked during token streaming.
+    async def event_generator():
         log.info(f"💬 [SOHBET SORUSU] '{query}'")
         print(f"\n{'='*55}")
         print(f"  [WEB] Sorgu: {query!r}")
         print(f"{'='*55}")
-        gen = answer_query_generator(
-            user_question=query,
-            model=app_state["model"],
-            embeddings_model=app_state["embeddings"],
-            db=app_state["db"],
-            chat_history=app_state["chat_history"],
-            query_cache=app_state["query_cache"],
-            state_manager=app_state["state_manager"]
-        )
+
+        loop = asyncio.get_running_loop()
+        import concurrent.futures
+        queue: asyncio.Queue = asyncio.Queue(maxsize=256)
+
+        def _run_generator():
+            try:
+                gen = answer_query_generator(
+                    user_question=query,
+                    model=app_state["model"],
+                    embeddings_model=app_state["embeddings"],
+                    db=app_state["db"],
+                    chat_history=app_state["chat_history"],
+                    query_cache=app_state["query_cache"],
+                    state_manager=app_state["state_manager"]
+                )
+                for payload in gen:
+                    loop.call_soon_threadsafe(queue.put_nowait, payload)
+            except Exception as exc:
+                loop.call_soon_threadsafe(queue.put_nowait, {"type": "error", "msg": str(exc)})
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)  # sentinel
+
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        loop.run_in_executor(executor, _run_generator)
 
         token_count = 0
-        for payload in gen:
+        while True:
+            payload = await queue.get()
+            if payload is None:  # sentinel: generator finished
+                break
             p_type = payload.get("type")
             if p_type == "rag_docs":
                 docs = payload.get("docs", [])
                 app_state["last_rag_docs"] = docs
                 log.info(f"🔍 [RAG ARAMA] Veritabanından {len(docs)} ilgili parça (chunk) getirildi.")
-                print(f"(*) RAG panel guncellendi: {len(docs)} chunk SSE uzerinden gonderiliyor")
                 for i, d in enumerate(docs, 1):
                     fname = d.get("source_file", "?")
                     dist  = d.get("distance", 0)
@@ -243,6 +274,10 @@ async def post_chat(request: Request):
                     print(f"    [{i}] dist={dist:.4f} | {fname} | {snip!r}")
                 data_json = json.dumps({"rag_docs": docs}, ensure_ascii=False)
                 yield f"data: {data_json}\n\n"
+                # S6 FLUSH FIX: yield control so uvicorn sends this SSE packet to the browser
+                # BEFORE the token stream begins. Without this, rag_docs + all tokens arrive
+                # in one TCP batch and the browser never sees the intermediate "N kaynak" state.
+                await asyncio.sleep(0.08)
             elif p_type == "telemetry":
                 telem = payload.get("telemetry", {})
                 app_state["last_telemetry"] = telem
@@ -255,8 +290,12 @@ async def post_chat(request: Request):
                 yield f"data: {data_json}\n\n"
             elif p_type == "done":
                 log.info(f"⚡ [LLM YANITI COMPLETED] SSE akışı tamamlandı ({token_count} token iletildi).")
-                print(f"(*) Stream tamamlandi: {token_count} token SSE uzerinden gonderildi")
                 yield "data: [DONE]\n\n"
+            elif p_type == "error":
+                err_json = json.dumps({"token": f"[-] Hata: {payload.get('msg', '')}"}, ensure_ascii=False)
+                yield f"data: {err_json}\n\n"
+                yield "data: [DONE]\n\n"
+
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -278,7 +317,11 @@ async def post_inventory(request: Request):
     body = await request.json()
     item = body.get("item", "").strip()
     action = body.get("action", "add")
-    amount = body.get("amount", 1)
+    # M-2 FIX: coerce amount to a safe non-negative integer
+    try:
+        amount = max(0, int(body.get("amount", 1)))
+    except (TypeError, ValueError):
+        amount = 1
 
     if not item or not app_state["state_manager"]:
         return JSONResponse({"error": "Gereksiz istek"}, status_code=400)
@@ -463,6 +506,33 @@ async def get_library_list():
     return JSONResponse({"files": files, "count": len(files)})
 
 
+@app.get("/api/child-stories")
+@app.get("/api/stories")
+async def get_child_stories():
+    """
+    Reads calming children stories from data/kisa_hikayeler directory and returns them to web frontend.
+    """
+    stories_dir = PROJECT_DIR / "data" / "kisa_hikayeler"
+    stories = []
+    if stories_dir.exists():
+        for p in sorted(stories_dir.glob("*.txt")):
+            try:
+                content = p.read_text(encoding="utf-8", errors="replace").strip()
+                lines = [line.strip() for line in content.splitlines() if line.strip()]
+                title = lines[0] if lines else p.stem.replace("_", " ").title()
+                body = "\n\n".join(lines[1:]) if len(lines) > 1 else content
+                stories.append({
+                    "id": p.stem,
+                    "title": title,
+                    "content": body,
+                    "filename": p.name
+                })
+            except Exception as e:
+                log.warning(f"Hikaye okuma hatası {p.name}: {e}")
+
+    return JSONResponse({"stories": stories, "count": len(stories)})
+
+
 @app.get("/api/file/{filename}")
 async def get_raw_file(filename: str):
     """
@@ -544,16 +614,23 @@ async def get_raw_file(filename: str):
 async def shutdown_server():
     """
     Triggers graceful shutdown of the API server.
+    C-3 FIX: Use SIGTERM so Python atexit handlers and FastAPI shutdown
+    lifecycle events run cleanly (SQLite WAL is flushed and DB is closed).
     """
+    import signal
     print("\n[+] [API SHUTDOWN] Güvenli kapatma emri alındı. Kriz asistanı sunucusu kapatılıyor...")
-    os._exit(0)
+    os.kill(os.getpid(), signal.SIGTERM)
 
 
 def _cli_shutdown_listener():
     """
     Listens on CMD stdin for 'q', 'exit', 'kapat', 'cikis' to cleanly shut down api.py.
+    M-5 FIX: Only runs when stdin is an interactive TTY to avoid blocking
+    in Docker, Windows Services, or CI/CD environments.
     """
-    import sys, time
+    import sys, time, signal
+    if not sys.stdin.isatty():
+        return  # Not a TTY: skip to prevent thread blocking on non-interactive stdin
     time.sleep(1.0)
     print("\n" + "="*60)
     print("[*] SUNUCU HAZIR! Kapatmak için CMD terminaline 'q', 'kapat', 'cikis' yazabilirsiniz.")
@@ -566,7 +643,8 @@ def _cli_shutdown_listener():
             cmd = line.strip().lower()
             if cmd in ('q', 'quit', 'exit', 'kapat', 'cikis', 'çıkış'):
                 print("\n[+] [CLI SHUTDOWN] Güvenli kapatma emri alındı. Sunucu kapatılıyor...")
-                os._exit(0)
+                os.kill(os.getpid(), signal.SIGTERM)
+                break
         except Exception:
             break
 

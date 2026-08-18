@@ -324,6 +324,8 @@ def retrieve_content(
     """
     Hybrid retrieval: Vector KNN + FTS5 BM25 → Reciprocal Rank Fusion → top-k.
     Thread-safe execution using _db_lock.
+    M-1 FIX: Embedding is computed OUTSIDE the lock to prevent blocking
+    concurrent DB requests during CPU-intensive embed_query() calls.
     """
     _OUT_OF_DOMAIN_KEYWORDS = {
         'kuantum', 'qubit', 'borsa', 'hisse', 'senedi', 'kripto', 'bitcoin',
@@ -333,13 +335,12 @@ def retrieve_content(
         print(f"(*) Out-of-domain query detected: '{query}' -> returning empty results")
         return []
 
+    # M-1 FIX: embed BEFORE acquiring the lock
+    print(f"(*) Analyzing user query: {query}")
+    if query_vector is None:
+        query_vector = embeddings_model.embed_query(query)
+
     with _db_lock:
-        print(f"(*) Analyzing user query: {query}")
-
-        # 1. Embed query (or reuse cached vector)
-        if query_vector is None:
-            query_vector = embeddings_model.embed_query(query)
-
         # 2. Vector search (semantic)
         print(f"(*) Vector search: top {VECTOR_K} candidates")
         vec_results = _vector_search(query_vector, db, VECTOR_K)
